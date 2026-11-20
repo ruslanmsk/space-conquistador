@@ -1,12 +1,26 @@
 import { getPlanet } from "../map/sol-system";
-import type { MatchState, PlanetId, PlayerId } from "../types";
+import type { MatchState, PlanetId, PlanetKind, PlayerId } from "../types";
 
 export const POINTS = {
+  /** Base value of an ordinary planet. */
   territory: 200,
-  conquered: 300,
   capital: 1000,
+  /** Extra value a planet gains every time it is conquered in battle. */
+  conquestBonus: 100,
   defense: 100,
 } as const;
+
+/** Points a free planet is worth when taken during expansion. */
+export const KIND_VALUE: Record<PlanetKind, number> = {
+  capital: POINTS.capital,
+  world: 200,
+  giant: 300,
+  outpost: 100,
+};
+
+export function baseValue(state: MatchState, planet: PlanetId): number {
+  return KIND_VALUE[getPlanet(state.map, planet).kind];
+}
 
 export function otherPlayer(p: PlayerId): PlayerId {
   return p === "human" ? "bot" : "human";

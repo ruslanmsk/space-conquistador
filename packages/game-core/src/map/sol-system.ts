@@ -2,39 +2,42 @@ import type { Planet, PlanetId, PlayerId, StarMap } from "../types";
 
 type PlanetDef = Omit<Planet, "neighbors">;
 
-/** Point-symmetric layout (x, y) -> (100 - x, 140 - y) so both capitals are equally placed. */
+/**
+ * Point-symmetric layout (x, y) -> (100 - x, 140 - y): every planet has a twin of the same kind
+ * on the other side, so both capitals start in equal positions. Ceres sits in the contested centre.
+ */
 const PLANETS: PlanetDef[] = [
-  { id: "earth", name: "Земля", x: 50, y: 124, capitalOf: "human" },
-  { id: "moon", name: "Луна", x: 22, y: 110 },
-  { id: "venus", name: "Венера", x: 78, y: 108 },
-  { id: "mars", name: "Марс", x: 34, y: 90 },
-  { id: "mercury", name: "Меркурий", x: 84, y: 82 },
-  { id: "vesta", name: "Веста", x: 14, y: 84 },
-  { id: "ceres", name: "Церера", x: 50, y: 70 },
-  { id: "saturn", name: "Сатурн", x: 86, y: 56 },
-  { id: "jupiter", name: "Юпитер", x: 16, y: 58 },
-  { id: "europa", name: "Европа", x: 66, y: 50 },
-  { id: "uranus", name: "Уран", x: 22, y: 32 },
-  { id: "triton", name: "Тритон", x: 78, y: 30 },
-  { id: "neptune", name: "Нептун", x: 50, y: 16, capitalOf: "bot" },
+  { id: "earth", name: "Земля", kind: "capital", x: 50, y: 124, capitalOf: "human" },
+  { id: "moon", name: "Луна", kind: "outpost", x: 22, y: 110 },
+  { id: "venus", name: "Венера", kind: "world", x: 78, y: 108 },
+  { id: "mars", name: "Марс", kind: "world", x: 34, y: 90 },
+  { id: "saturn", name: "Сатурн", kind: "giant", x: 84, y: 82 },
+  { id: "mercury", name: "Меркурий", kind: "world", x: 14, y: 84 },
+  { id: "ceres", name: "Церера", kind: "outpost", x: 50, y: 70 },
+  { id: "pluto", name: "Плутон", kind: "world", x: 86, y: 56 },
+  { id: "jupiter", name: "Юпитер", kind: "giant", x: 16, y: 58 },
+  { id: "europa", name: "Европа", kind: "world", x: 66, y: 50 },
+  { id: "uranus", name: "Уран", kind: "world", x: 22, y: 32 },
+  { id: "triton", name: "Тритон", kind: "outpost", x: 78, y: 30 },
+  { id: "neptune", name: "Нептун", kind: "capital", x: 50, y: 16, capitalOf: "bot" },
 ];
 
 const EDGES: [PlanetId, PlanetId][] = [
   ["earth", "moon"],
   ["earth", "venus"],
   ["earth", "mars"],
-  ["moon", "vesta"],
+  ["moon", "mercury"],
   ["moon", "mars"],
-  ["venus", "mercury"],
+  ["venus", "saturn"],
   ["venus", "ceres"],
   ["mars", "ceres"],
-  ["vesta", "jupiter"],
-  ["mercury", "ceres"],
-  ["mercury", "saturn"],
+  ["mercury", "jupiter"],
+  ["saturn", "ceres"],
+  ["saturn", "pluto"],
   ["neptune", "triton"],
   ["neptune", "uranus"],
   ["neptune", "europa"],
-  ["triton", "saturn"],
+  ["triton", "pluto"],
   ["triton", "europa"],
   ["uranus", "jupiter"],
   ["uranus", "ceres"],

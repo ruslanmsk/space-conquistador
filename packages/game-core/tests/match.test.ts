@@ -4,7 +4,11 @@ import {
   POINTS,
   botAnswer,
   botChooseAttack,
+  botAccuracy,
+  botWager,
+  maxWager,
   botChoosePick,
+  botWantsBooster,
   createMatch,
   dispatch,
   freePlanets,
@@ -69,6 +73,10 @@ function wrongValue(state: MatchState, ctx: GameContext): number {
 
 function answer(state: MatchState, ctx: GameContext, player: PlayerId, value: number | null, ms: number) {
   return dispatch(state, { type: "ANSWER", player, value, elapsedMs: ms }, ctx);
+}
+
+function attack(state: MatchState, ctx: GameContext, player: PlayerId, target: string): MatchState {
+  return dispatch(state, { type: "ATTACK", player, target }, ctx);
 }
 
 /** Creates a match whose first question has the requested type. */
@@ -198,13 +206,13 @@ describe("battle", () => {
     const ctx = ctxOf(3);
     let s = battleState(ctx);
     expect(getLegalAttackTargets(s, "human")).toContain("europa");
-    s = dispatch(s, { type: "ATTACK", player: "human", target: "europa" }, ctx);
+    s = attack(s, ctx, "human", "europa");
     s = answer(s, ctx, "human", correctValue(s, ctx), 2000);
     s = answer(s, ctx, "bot", wrongValue(s, ctx), 2000);
     if (s.step.type !== "reveal") throw new Error();
     expect(s.step.reveal.outcome.type).toBe("captured");
     expect(s.owners.europa).toBe("human");
-    expect(s.planetValue.europa).toBe(POINTS.conquered);
+    expect(s.planetValue.europa).toBe(POINTS.territory + POINTS.conquestBonus);
     s = dispatch(s, { type: "CONTINUE" }, ctx);
     expect(s.step).toEqual({ type: "attack", player: "bot" });
   });
@@ -212,7 +220,7 @@ describe("battle", () => {
   it("both right -> numeric tiebreak; closer attacker wins", () => {
     const ctx = ctxOf(4);
     let s = battleState(ctx);
-    s = dispatch(s, { type: "ATTACK", player: "human", target: "europa" }, ctx);
+    s = attack(s, ctx, "human", "europa");
     s = answer(s, ctx, "human", correctValue(s, ctx), 2000);
     s = answer(s, ctx, "bot", correctValue(s, ctx), 1000);
     if (s.step.type !== "reveal") throw new Error();
@@ -231,7 +239,7 @@ describe("battle", () => {
     const ctx = ctxOf(5);
     let s = battleState(ctx);
     const before = getScores(s).bot;
-    s = dispatch(s, { type: "ATTACK", player: "human", target: "europa" }, ctx);
+    s = attack(s, ctx, "human", "europa");
     s = answer(s, ctx, "human", wrongValue(s, ctx), 2000);
     s = answer(s, ctx, "bot", wrongValue(s, ctx), 2000);
     expect(s.owners.europa).toBe("bot");
@@ -244,7 +252,7 @@ describe("battle", () => {
     s = { ...s, owners: { ...s.owners, neptune: "bot", europa: "human" } };
     for (let hit = 1; hit <= s.config.capitalShields; hit++) {
       s = { ...s, step: { type: "attack", player: "human" } };
-      s = dispatch(s, { type: "ATTACK", player: "human", target: "neptune" }, ctx);
+      s = attack(s, ctx, "human", "neptune");
       s = answer(s, ctx, "human", correctValue(s, ctx), 1000);
       s = answer(s, ctx, "bot", wrongValue(s, ctx), 1000);
     }
@@ -282,7 +290,11 @@ function simulate(seed: number, levels: Record<PlayerId, BotLevel>): MatchState 
     if (step.type === "finished") return s;
     if (step.type === "question") {
       const p = step.q.participants.find((x) => !step.q.answers[x])!;
-      const a = botAnswer(s, ctx, levels[p]);
+      const boost = botWantsBooster(s, ctx, levels[p], p);
+      if (boost && !step.q.aids[p]) {
+        s = deepFreeze(dispatch(s, { type: "BOOST", player: p, booster: boost }, ctx));
+      }
+      const a = botAnswer(s, ctx, levels[p], p);
       next = answer(s, ctx, p, a.value, a.elapsedMs);
     } else if (step.type === "reveal") {
       next = dispatch(s, { type: "CONTINUE" }, ctx);
@@ -290,6 +302,9 @@ function simulate(seed: number, levels: Record<PlayerId, BotLevel>): MatchState 
       const p = step.queue[0]!;
       const planet = botChoosePick(s, p, levels[p], ctx.rng)!;
       next = dispatch(s, { type: "PICK", player: p, planet }, ctx);
+    } else if (step.type === "wager") {
+      const p = (["human", "bot"] as const).find((x) => step.bets[x] === undefined)!;
+      next = dispatch(s, { type: "WAGER", player: p, amount: botWager(s, p, levels[p], ctx.rng) }, ctx);
     } else {
       const target = botChooseAttack(s, step.player, levels[step.player], ctx.rng)!;
       next = dispatch(s, { type: "ATTACK", player: step.player, target }, ctx);
@@ -321,5 +336,111 @@ describe("full matches (bot vs bot)", () => {
       if (s.winner === "bot") hardWins++;
     }
     expect(hardWins).toBeGreaterThan(120);
+  });
+});
+
+describe("depth mechanics", () => {
+  it("planets are category sectors and an attack asks from the target's sector", () => {
+    const cats = ["История", "Спорт", "Еда", "Музыка"];
+    const ctx = ctxOf(11, [...FIXTURE, ...FIXTURE.map((q) => ({ ...q, id: q.id + "b" }))].map((q, i) => ({ ...q, category: cats[i % cats.length]! })));
+    let s = battleState(ctx);
+    expect(s.sectors.earth).toBeNull();
+    expect(s.sectors.europa).not.toBeNull();
+    s = dispatch(s, { type: "ATTACK", player: "human", target: "europa" }, ctx);
+    if (s.step.type !== "question") throw new Error();
+    expect(s.step.q.question.category).toBe(s.sectors.europa);
+    expect(s.battle?.category).toBe(s.sectors.europa);
+  });
+
+  it("after the last battle turn comes the wager finale; bets settle the score", () => {
+    const ctx = ctxOf(12);
+    let s = battleState(ctx);
+    s = { ...s, round: s.config.battleTurns, step: { type: "attack", player: "human" } };
+    s = attack(s, ctx, "human", "europa");
+    s = answer(s, ctx, "human", wrongValue(s, ctx), 2000);
+    s = answer(s, ctx, "bot", wrongValue(s, ctx), 2000);
+    s = dispatch(s, { type: "CONTINUE" }, ctx);
+    expect(s.phase).toBe("finale");
+    if (s.step.type !== "wager") throw new Error(s.step.type);
+    const before = getScores(s);
+    const max = maxWager(s, "human");
+    expect(max).toBe(Math.floor(before.human / 2 / 50) * 50);
+    s = dispatch(s, { type: "WAGER", player: "human", amount: 99999 }, ctx);
+    s = dispatch(s, { type: "WAGER", player: "bot", amount: 300 }, ctx);
+    expect(s.finaleBets).toEqual({ human: max, bot: 300 });
+    if (s.step.type !== "question") throw new Error();
+    expect(s.step.q.kind).toBe("finale");
+    s = answer(s, ctx, "human", correctValue(s, ctx), 2000);
+    s = answer(s, ctx, "bot", wrongValue(s, ctx), 2000);
+    const after = getScores(s);
+    expect(after.human).toBe(before.human + max);
+    expect(after.bot).toBe(before.bot - 300);
+    s = dispatch(s, { type: "CONTINUE" }, ctx);
+    expect(s.phase).toBe("finished");
+  });
+
+  it("50/50 hides two wrong choices and is spent once", () => {
+    const { s: s0, ctx } = matchWithQuestion("mcq");
+    const s = dispatch(s0, { type: "BOOST", player: "human", booster: "fifty" }, ctx);
+    if (s.step.type !== "question") throw new Error();
+    const hidden = s.step.q.aids.human!.hidden!;
+    expect(hidden).toHaveLength(2);
+    expect(hidden).not.toContain(correctValue(s, ctx));
+    expect(s.boosters.human.fifty).toBe(0);
+    expect(dispatch(s, { type: "BOOST", player: "human", booster: "fifty" }, ctx)).toBe(s);
+    expect(dispatch(s, { type: "BOOST", player: "human", booster: "range" }, ctx)).toBe(s);
+  });
+
+  it("range hint brackets the numeric answer", () => {
+    for (let seed = 1; seed < 40; seed++) {
+      const { s: s0, ctx } = matchWithQuestion("numeric", seed * 7);
+      const s = dispatch(s0, { type: "BOOST", player: "human", booster: "range" }, ctx);
+      if (s.step.type !== "question") throw new Error();
+      const [lo, hi] = s.step.q.aids.human!.range!;
+      const v = correctValue(s, ctx);
+      expect(lo).toBeLessThanOrEqual(v);
+      expect(hi).toBeGreaterThanOrEqual(v);
+      expect(hi).toBeGreaterThan(lo);
+    }
+  });
+
+  it("a streak of correct answers earns a booster", () => {
+    const { s: s0, ctx } = matchWithQuestion("mcq");
+    let s = s0;
+    let rewarded = false;
+    for (let i = 0; i < 12 && !rewarded; i++) {
+      if (s.step.type === "question") {
+        s = answer(s, ctx, "human", correctValue(s, ctx), 1000);
+        s = answer(s, ctx, "bot", null, 15000);
+        if (s.step.type === "reveal" && s.step.reveal.rewards.some((r) => r.reason === "streak")) rewarded = true;
+      } else if (s.step.type === "reveal") {
+        s = dispatch(s, { type: "CONTINUE" }, ctx);
+      } else if (s.step.type === "pick") {
+        s = dispatch(s, { type: "PICK", player: "human", planet: getLegalPicks(s, "human")[0]! }, ctx);
+      } else break;
+    }
+    expect(rewarded).toBe(true);
+    expect(s.tally.human.bestStreak).toBeGreaterThanOrEqual(s.config.streakForBooster);
+  });
+
+  it("taking an outpost grants a booster; giants are worth more", () => {
+    const { s: s0, ctx } = matchWithQuestion("mcq");
+    let s = answer(s0, ctx, "human", correctValue(s0, ctx), 1000);
+    s = answer(s, ctx, "bot", wrongValue(s0, ctx), 1000);
+    s = dispatch(s, { type: "CONTINUE" }, ctx);
+    const before = s.boosters.human.fifty + s.boosters.human.range;
+    s = dispatch(s, { type: "PICK", player: "human", planet: "moon" }, ctx);
+    expect(s.boosters.human.fifty + s.boosters.human.range).toBe(before + 1);
+    expect(s.planetValue.moon).toBe(100);
+    expect(s.events.at(-1)).toMatchObject({ type: "booster", player: "human" });
+  });
+
+  it("bot is stronger in its strong categories", () => {
+    const opp = { id: "t", name: "t", title: "", level: "normal" as const, strong: ["История"], weak: ["Спорт"] };
+    const strong = botAccuracy("normal", opp, "История", 2);
+    const weak = botAccuracy("normal", opp, "Спорт", 2);
+    const plain = botAccuracy("normal", opp, "Еда", 2);
+    expect(strong).toBeGreaterThan(plain);
+    expect(weak).toBeLessThan(plain);
   });
 });

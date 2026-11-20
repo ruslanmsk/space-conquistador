@@ -7,7 +7,7 @@ import {
   type PublicQuestion,
   type Reveal,
 } from "@space-conquistador/game-core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
@@ -46,6 +46,8 @@ type Props = {
 };
 
 const LETTERS = ["А", "Б", "В", "Г"];
+const TILE_H = 52;
+const TILE_COMPACT_H = 34;
 
 /** Reveal beats, ms after both answers are in. */
 const BEAT = { opponent: 400, correct: 750, verdict: 1150 };
@@ -73,7 +75,7 @@ function Strip({ state, question, q, reveal, stage }: { state: MatchState; quest
   const kind = (q ?? reveal)!.kind;
   const battle = state.battle;
   let title = "Раздел системы";
-  let sub = "Быстрый верный ответ — 2 планеты, второй — 1";
+  let sub = "Самый быстрый верный — 2 планеты";
   if (kind === "battle" && battle) {
     title = battle.attacker === "human" ? `Атака: ${planetName(state, battle.target)}` : `Оборона: ${planetName(state, battle.target)}`;
     sub = battle.attacker === "human" ? "Ответьте верно, а соперник — нет" : "Ответьте верно, чтобы отбить атаку";
@@ -196,6 +198,13 @@ function Choice({
   const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
 
   const theirsShown = theirs && revealing && stage >= 1;
+  // After the correct beat, options nobody picked shrink so the important tiles stay on screen.
+  const compact = revealing && stage >= 2 && !correct && !mine && !theirsShown;
+  const height = useSharedValue(TILE_H);
+  useEffect(() => {
+    height.value = withTiming(compact ? TILE_COMPACT_H : TILE_H, { duration: 220 });
+  }, [compact, height]);
+  const heightStyle = useAnimatedStyle(() => ({ height: height.value }));
   const wrongTheirs = revealing && stage >= 2 && theirs && !correct;
   const dim =
     (locked && !mine && !revealing) || (revealing && stage >= 2 && !correct && !mine && !theirsShown) || hidden;
@@ -221,27 +230,27 @@ function Choice({
               both ? { borderRightColor: colors.bot, borderBottomColor: colors.bot } : null,
             ]}
           >
-            <View style={styles.choice}>
+            <Animated.View style={[styles.choice, heightStyle]}>
               <Text style={[styles.letter, { color: ink }]}>{hidden ? "—" : LETTERS[index]}</Text>
-              <Text style={[styles.choiceText, { color: ink }, hidden && { textDecorationLine: "line-through" }]}>{text}</Text>
-              {revealing && stage >= 2 && correct && <Text style={[styles.mark, { color: colors.ink }]}>✓</Text>}
-              {(wrongMine || (wrongTheirs && !mine)) && <Text style={[styles.mark, { color: colors.text }]}>✕</Text>}
-            </View>
-            {(mine || theirsShown) && (
-              <View style={styles.tags}>
+              <Text style={[styles.choiceText, { color: ink }, hidden && { textDecorationLine: "line-through" }]} numberOfLines={compact ? 1 : 2}>
+                {text}
+              </Text>
+              {/* fixed-width marks column: tags never change the tile's height */}
+              <View style={styles.marks}>
+                {revealing && stage >= 2 && correct && <Text style={[styles.mark, { color: colors.ink }]}>✓</Text>}
+                {(wrongMine || (wrongTheirs && !mine)) && <Text style={[styles.mark, { color: colors.text }]}>✕</Text>}
                 {mine && (
                   <View style={[styles.tag, { backgroundColor: colors.human }]}>
-                    <Text style={[styles.tagText, { color: colors.humanInk }]}>ВАШ ОТВЕТ</Text>
+                    <Text style={[styles.tagText, { color: colors.humanInk }]}>ВЫ</Text>
                   </View>
                 )}
                 {theirsShown && (
-                  <Animated.View entering={FadeIn.duration(200)} style={[styles.tag, { backgroundColor: colors.bot }]}>
-                    <Avatar id={botId} size={18} uid={`ch-${index}`} />
-                    <Text style={[styles.tagText, { color: colors.botInk }]}>СОПЕРНИК</Text>
+                  <Animated.View entering={FadeIn.duration(200)} style={[styles.tagAvatar, { borderColor: colors.bot }]}>
+                    <Avatar id={botId} size={26} ring={colors.bot} uid={`ch-${index}`} />
                   </Animated.View>
                 )}
               </View>
-            )}
+            </Animated.View>
           </Slab>
         )}
       </Pressable>
@@ -314,7 +323,12 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
     }
   }, [reveal, stage]);
 
-  const humanAnswer = reveal?.answers.human ?? q?.answers.human;
+  // Safety net for short screens: bring the answers into view when the correct one lights up.
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  useEffect(() => {
+    if (reveal && stage === 2) scrollRef.current?.scrollToEnd({ animated: true });
+  }, [reveal, stage]);
+
   const botAnswer = reveal?.answers.bot;
   const answered = !!q?.answers.human;
   const participating = (q ?? reveal)!.kind === "expansion" || (q?.participants ?? Object.keys(reveal!.answers)).includes("human");
@@ -328,11 +342,14 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
   const verdictFace = verdictWinner ? playerColor(verdictWinner) : colors.raisedHi;
   const verdictInk = verdictWinner === "human" ? colors.humanInk : verdictWinner === "bot" ? colors.botInk : colors.text;
 
+  const myRewards = reveal
+    ? reveal.rewards.filter((r) => r.player === "human").map((r) => `+1 «${BOOSTER_LABELS[r.booster].name}»`)
+    : [];
   return (
     <View style={[styles.root, { paddingTop: insets.top + 6 }]}>
       <Strip state={state} question={question} q={q} reveal={reveal} stage={stage} />
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 16 }]} bounces={false}>
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={styles.scroll} bounces={false}>
         <Slab color={colors.paper} shadow={colors.bgDeep} depth={5} radius={6}>
           {q && !reveal ? (
             <TimerBar q={q} answersAt={answersAt} active={!answered && participating} onExpire={() => onAnswer(null)} />
@@ -376,7 +393,7 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
                 Ответ между {formatNumber(aid.range[0])} и {formatNumber(aid.range[1])}
               </Text>
             )}
-            {reveal?.fact && stage >= 3 ? (
+            {reveal?.fact ? (
               <Animated.Text entering={FadeIn.duration(250)} style={styles.fact}>
                 {reveal.fact}
               </Animated.Text>
@@ -433,62 +450,65 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
           </View>
         )}
 
-        {/* footer: boosters / waiting / verdict */}
+      </ScrollView>
+
+      {/* Fixed-height action bar: the button is always on screen and nothing above it jumps. */}
+      <View style={[styles.bar, { paddingBottom: insets.bottom + 10 }]}>
         {q && !reveal && showAnswers && (
-          <View style={styles.footer}>
+          <View style={styles.barRow}>
             <Boosters state={state} q={q} onBoost={onBoost} />
-            <Text style={styles.waiting}>
-              {!participating ? "Вы наблюдаете" : answered ? "Ответ принят. Ждём соперника…" : humanAnswer ? "" : ""}
+            <Text style={styles.waiting} numberOfLines={2}>
+              {!participating ? "Вы наблюдаете" : answered ? "Ответ принят. Ждём соперника…" : ""}
             </Text>
           </View>
         )}
-
         {reveal && stage >= 3 && verdict && (
-          <Animated.View entering={FadeInDown.duration(260).easing(Easing.out(Easing.cubic))} style={styles.verdict}>
-            <Slab color={verdictFace} shadow={verdictWinner ? playerDeep(verdictWinner) : colors.bgDeep} depth={4}>
+          <Animated.View entering={FadeInDown.duration(220).easing(Easing.out(Easing.cubic))} style={{ gap: 10 }}>
+            <Slab color={verdictFace} shadow={verdictWinner ? playerDeep(verdictWinner) : colors.bgDeep} depth={3}>
               <View style={styles.verdictRow}>
                 {verdictWinner && (
-                  <Avatar id={verdictWinner === "human" ? "you" : state.config.opponent.id} size={44} uid="verdict" />
+                  <Avatar id={verdictWinner === "human" ? "you" : state.config.opponent.id} size={34} uid="verdict" />
                 )}
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.verdictTitle, { color: verdictInk }]}>{verdict.title}</Text>
-                  {verdict.subtitle ? <Text style={[styles.verdictSub, { color: verdictInk }]}>{verdict.subtitle}</Text> : null}
+                  <Text style={[styles.verdictTitle, { color: verdictInk }]} numberOfLines={1}>
+                    {verdict.title}
+                  </Text>
+                  {verdict.subtitle || myRewards.length ? (
+                    <Text style={[styles.verdictSub, { color: verdictInk }]} numberOfLines={1}>
+                      {[verdict.subtitle, ...myRewards].filter(Boolean).join(" · ")}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
             </Slab>
-            {reveal.rewards
-              .filter((r) => r.player === "human")
-              .map((r, i) => (
-                <Text key={i} style={[styles.reward, { marginTop: 10 }]}>
-                  {r.reason === "streak" ? "Серия верных ответов" : "Аванпост"}: +1 «{BOOSTER_LABELS[r.booster].name}»
-                </Text>
-              ))}
-            <Button title="Дальше" onPress={onNext} style={{ marginTop: 14 }} />
+            <Button title="Дальше" size="md" onPress={onNext} />
           </Animated.View>
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFill, backgroundColor: colors.bg },
-  scroll: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 6, gap: 12 },
+  scroll: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 2, paddingBottom: 8, gap: 8 },
+  bar: { minHeight: 120, paddingHorizontal: 16, paddingTop: 8, justifyContent: "flex-start", borderTopWidth: 1, borderColor: colors.line },
+  barRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48 },
   strip: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: 16, paddingBottom: 8, gap: 8 },
   side: { width: 74 },
   sideStatus: { fontFamily: fonts.bodyBold, fontSize: 11, marginTop: 4 },
-  stripMid: { flex: 1, alignItems: "center", minHeight: 52 },
+  stripMid: { flex: 1, alignItems: "center", minHeight: 46 },
   stripTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: colors.text, marginTop: 2, textAlign: "center" },
   stripSub: { fontFamily: fonts.body, fontSize: 12, color: colors.muted, textAlign: "center", marginTop: 2 },
   timerTrack: { height: 6, backgroundColor: colors.paperDeep, borderTopLeftRadius: 4, borderTopRightRadius: 4, overflow: "hidden" },
   timerFill: { height: 6 },
-  card: { padding: 16, paddingTop: 12, gap: 10 },
+  card: { paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
   meta: { flexDirection: "row", alignItems: "center", gap: 6 },
   metaText: { fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: colors.inkMuted },
   dots: { flexDirection: "row", gap: 3 },
   dot: { width: 7, height: 7, borderRadius: 1, borderWidth: 1.5, borderColor: colors.inkMuted },
   dotOn: { backgroundColor: colors.inkMuted },
-  question: { fontFamily: fonts.bodyBold, fontSize: 21, lineHeight: 28, color: colors.ink },
+  question: { fontFamily: fonts.bodyBold, fontSize: 19, lineHeight: 25, color: colors.ink },
   display: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -502,18 +522,18 @@ const styles = StyleSheet.create({
   displayText: { fontFamily: fonts.display, fontSize: 32, color: colors.ink },
   unit: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.inkMuted },
   rangeHint: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.ink, textAlign: "center", backgroundColor: colors.gold, paddingVertical: 4, borderRadius: 3 },
-  fact: { fontFamily: fonts.body, fontSize: 14, lineHeight: 19, color: colors.inkMuted, borderTopWidth: 1, borderColor: colors.paperLine, paddingTop: 8 },
-  choices: { gap: 8 },
-  choice: { flexDirection: "row", alignItems: "center", minHeight: 54, paddingHorizontal: 14, paddingVertical: 8, gap: 12 },
+  fact: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.inkMuted, borderTopWidth: 1, borderColor: colors.paperLine, paddingTop: 8 },
+  choices: { gap: 7 },
+  choice: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, gap: 10, overflow: "hidden" },
   letter: { fontFamily: fonts.display, fontSize: 15, width: 18 },
-  choiceText: { fontFamily: fonts.bodySemi, fontSize: 17, lineHeight: 22, flex: 1 },
-  tags: { flexDirection: "row", gap: 6, paddingHorizontal: 12, paddingBottom: 8, marginTop: -2 },
-  tag: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 3, borderWidth: 1.5, borderColor: colors.ink },
+  choiceText: { fontFamily: fonts.bodySemi, fontSize: 16, lineHeight: 20, flex: 1 },
+  marks: { flexDirection: "row", alignItems: "center", gap: 6 },
+  tag: { paddingHorizontal: 6, paddingVertical: 4, borderRadius: 3, borderWidth: 1.5, borderColor: colors.ink },
   tagText: { fontFamily: fonts.display, fontSize: 10, letterSpacing: 0.5 },
+  tagAvatar: { borderRadius: 4 },
   mark: { fontFamily: fonts.display, fontSize: 18 },
-  reading: { height: 120, alignItems: "center", justifyContent: "center" },
+  reading: { height: 4 * 59, alignItems: "center", justifyContent: "center" },
   readingText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.dim, letterSpacing: 1, textTransform: "uppercase" },
-  footer: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 },
   waiting: { flex: 1, fontFamily: fonts.body, fontSize: 13, color: colors.muted, textAlign: "right" },
   booster: {
     flexDirection: "row",
@@ -528,9 +548,7 @@ const styles = StyleSheet.create({
   },
   boosterName: { fontFamily: fonts.displayBold, fontSize: 13, color: colors.gold },
   boosterCount: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.muted },
-  verdict: { paddingTop: 4 },
-  verdictRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12 },
-  verdictTitle: { fontFamily: fonts.display, fontSize: 20, lineHeight: 25 },
-  verdictSub: { fontFamily: fonts.bodySemi, fontSize: 14, lineHeight: 19, marginTop: 2, opacity: 0.9 },
-  reward: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.gold, marginTop: 6 },
+  verdictRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 7 },
+  verdictTitle: { fontFamily: fonts.display, fontSize: 16, lineHeight: 21 },
+  verdictSub: { fontFamily: fonts.bodySemi, fontSize: 12, lineHeight: 16, opacity: 0.9 },
 });

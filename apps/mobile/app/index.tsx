@@ -10,6 +10,7 @@ import { Poster } from "../src/components/Poster";
 import { Screen } from "../src/components/Screen";
 import { Slab } from "../src/components/Slab";
 import { LEVEL_LABELS } from "../src/game/labels";
+import { onlineEnabled } from "../src/online/config";
 import { useProgressData } from "../src/hooks/useProgressData";
 import { loadMatchState } from "../src/storage/matchPersist";
 import { isUnlocked, nextOpponentIndex } from "../src/storage/progress";
@@ -64,12 +65,14 @@ export default function HomeScreen() {
               icon={<Avatar id={next.id} size={40} uid="cta" />}
               onPress={() => router.push({ pathname: "/briefing", params: { id: next.id } })}
             />
-            <Button
-              variant="paper"
-              title="Играть с друзьями"
-              caption="Онлайн · комната по ссылке или коду · 2–4 игрока"
-              onPress={() => router.push("/online")}
-            />
+            {onlineEnabled && (
+              <Button
+                variant="paper"
+                title="Играть с друзьями"
+                caption="Онлайн · комната по ссылке или коду · 2–4 игрока"
+                onPress={() => router.push("/online")}
+              />
+            )}
           </View>
 
           <Text style={styles.section}>Кампания</Text>

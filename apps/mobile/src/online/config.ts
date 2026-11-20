@@ -18,6 +18,12 @@ export function serverUrl(): string {
   return "http://localhost:3001";
 }
 
+/**
+ * Online play is offered in dev builds, or in release builds that were given a server address.
+ * (The public web build has no server yet — hide the entry instead of showing "server unavailable".)
+ */
+export const onlineEnabled = __DEV__ || !!process.env.EXPO_PUBLIC_SERVER_URL;
+
 /** Invite link that opens the waiting room: `<origin>/room/CODE` on the web, the app scheme natively. */
 export function inviteLink(code: string): string {
   if (Platform.OS === "web" && typeof window !== "undefined") {

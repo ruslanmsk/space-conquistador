@@ -1,6 +1,6 @@
 # Space Conquistador
 
-Квиз-стратегия про захват Солнечной системы. Вопросы на эрудицию на русском, матч против ботов-командиров. React Native + Expo, стиль «Космоплакат». Платформы: Android (основная), iOS, веб для быстрой проверки.
+Квиз-стратегия про захват Солнечной системы. Вопросы на эрудицию на русском, матч против ботов-командиров или онлайн с друзьями (2–4 игрока). React Native + Expo, стиль «Космоплакат». Платформы: Android (основная), iOS, веб для быстрой проверки.
 
 ## Запуск
 
@@ -17,6 +17,16 @@ npm start            # dev-сервер + QR-код для телефона
 npm run check        # вопросы + типы + тесты
 ```
 
+**Онлайн локально** (нужен Docker):
+
+```bash
+npm run db:up        # Postgres 16 на localhost:5433
+npm run server       # сервер на http://localhost:3001
+npm run web          # затем «Играть с друзьями» → создать комнату → отправить ссылку
+```
+
+Второго игрока на том же компьютере удобно открыть на `http://127.0.0.1:8081` (другой адрес — другой гость). Подробности — [`docs/MULTIPLAYER.md`](docs/MULTIPLAYER.md).
+
 **На телефоне (Android/iOS):** поставьте **Expo Go** из Google Play / App Store, запустите `npm start` и отсканируйте QR-код (телефон и компьютер в одной Wi-Fi сети). Проект на Expo SDK 58 — это версия, которую поддерживает текущий Expo Go.
 
 ## Как играть
@@ -32,8 +42,10 @@ npm run check        # вопросы + типы + тесты
 ## Структура
 
 - `packages/game-core` — вся логика матча (чистый TypeScript, тесты на vitest)
-- `apps/mobile` — Expo-приложение (экраны, карта, анимации)
-- `content/questions/ru.json` — банк вопросов (проверка: `npm run validate:questions`)
+- `apps/mobile` — Expo-приложение (экраны, карта, анимации, онлайн-клиент)
+- `apps/server` — сервер онлайна (Fastify + Socket.IO + Postgres)
+- `packages/protocol` — общие типы клиент ↔ сервер
+- `content/questions/*.json` — банк вопросов (проверка: `npm run validate:questions`)
 - `scripts/gen-sounds.py`, `scripts/gen-icon.py` — генерация звуков и иконки без зависимостей
 
 Документация для разработки: [`AGENTS.md`](AGENTS.md), [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md), [`docs/PLAN.md`](docs/PLAN.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

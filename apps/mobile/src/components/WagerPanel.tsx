@@ -4,7 +4,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatNumber } from "../game/labels";
-import { liveOpponents, mainOpponent, mySeat, seatAvatarId, seatColor, seatName } from "../game/seats";
+import { liveOpponents, mainOpponent, seatAvatarId, seatColor, seatName } from "../game/seats";
+import { useMe } from "../game/me";
+import { useSecondsLeft } from "../hooks/useNow";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/type";
 import { haptics } from "../utils/haptics";
@@ -17,19 +19,32 @@ import { Slab } from "./Slab";
  * "Ва-банк": the category is revealed, then every player still in bets up to half their score
  * on one question. Right answer adds the bet, wrong subtracts it.
  */
-export function WagerPanel({ state, onWager }: { state: MatchState; onWager: (n: number) => void }) {
+export function WagerPanel({
+  state,
+  onWager,
+  turnUntil,
+}: {
+  state: MatchState;
+  onWager: (n: number) => void;
+  /** Online: when the server bets for an idle player. */
+  turnUntil?: number | null;
+}) {
+  const me = useMe();
   const insets = useSafeAreaInsets();
   const step = state.step;
-  const max = maxWager(state, mySeat);
+  const max = maxWager(state, me);
   const scores = getScores(state);
   const [bet, setBet] = useState(Math.round(max / 2 / 50) * 50);
+  // Online the bet comes back with the next snapshot; lock the button as soon as it is sent.
+  const [sent, setSent] = useState(false);
+  const left = useSecondsLeft(turnUntil);
   if (step.type !== "wager") return null;
-  const placed = step.bets[mySeat] !== undefined;
-  const rivals = liveOpponents(state);
+  const placed = step.bets[me] !== undefined || sent;
+  const rivals = liveOpponents(state, me);
   const opp = mainOpponent(state);
   const edge = !opp ? null : opp.strong.includes(step.category) ? "сильная тема соперника" : opp.weak.includes(step.category) ? "слабая тема соперника" : null;
   const best = Math.max(...rivals.map((p) => scores[p] ?? 0));
-  const lead = (scores[mySeat] ?? 0) - best;
+  const lead = (scores[me] ?? 0) - best;
   const options = [0, 0.25, 0.5, 0.75, 1].map((k) => Math.round((max * k) / 50) * 50);
 
   return (
@@ -60,8 +75,11 @@ export function WagerPanel({ state, onWager }: { state: MatchState; onWager: (n:
 
       <View style={styles.betBox}>
         <Text style={styles.betLabel}>Ваша ставка</Text>
-        <Text style={styles.betValue}>{formatNumber(placed ? step.bets[mySeat]! : bet)}</Text>
+        <Text style={styles.betValue}>{formatNumber(placed ? step.bets[me]! : bet)}</Text>
         <Text style={styles.betMax}>максимум {formatNumber(max)} — половина ваших очков</Text>
+        {left !== null && !placed && (
+          <Text style={[styles.betMax, left <= 5 && { color: colors.human }]}>Ставка сделается сама через {left} с</Text>
+        )}
         <View style={styles.options}>
           {options.map((v, i) => (
             <Pressable
@@ -82,9 +100,9 @@ export function WagerPanel({ state, onWager }: { state: MatchState; onWager: (n:
       <View style={{ flex: 1 }} />
       {rivals.map((p) => (
         <View key={p} style={styles.bot}>
-          <Avatar id={seatAvatarId(state, p)} size={32} ring={seatColor(state, p)} uid={`wager-${p}`} />
+          <Avatar id={seatAvatarId(state, p, me)} size={32} ring={seatColor(state, p, me)} uid={`wager-${p}`} />
           <Text style={styles.botText}>
-            {step.bets[p] !== undefined ? `${seatName(state, p)} сделал ставку` : `${seatName(state, p)} думает над ставкой…`}
+            {step.bets[p] !== undefined ? `${seatName(state, p, me)} сделал ставку` : `${seatName(state, p, me)} думает над ставкой…`}
           </Text>
         </View>
       ))}
@@ -93,6 +111,7 @@ export function WagerPanel({ state, onWager }: { state: MatchState; onWager: (n:
         disabled={placed}
         onPress={() => {
           haptics.impact();
+          setSent(true);
           onWager(bet);
         }}
       />

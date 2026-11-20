@@ -64,6 +64,12 @@ export default function HomeScreen() {
               icon={<Avatar id={next.id} size={40} uid="cta" />}
               onPress={() => router.push({ pathname: "/briefing", params: { id: next.id } })}
             />
+            <Button
+              variant="paper"
+              title="Играть с друзьями"
+              caption="Онлайн · комната по ссылке или коду · 2–4 игрока"
+              onPress={() => router.push("/online")}
+            />
           </View>
 
           <Text style={styles.section}>Кампания</Text>

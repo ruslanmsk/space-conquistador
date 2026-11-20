@@ -21,7 +21,8 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BOOSTER_LABELS, formatNumber, formatSeconds, planetName, revealTitle } from "../game/labels";
 import { useCountdown } from "../hooks/useCountdown";
-import { isMe, mySeat, opponentSeats, seatAvatarId, seatColor, seatDeep, seatInk, seatName } from "../game/seats";
+import { isMe, opponentSeats, seatAvatarId, seatColor, seatDeep, seatInk, seatName } from "../game/seats";
+import { useMe } from "../game/me";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/type";
 import { haptics } from "../utils/haptics";
@@ -44,9 +45,16 @@ type Props = {
   onAnswer: (value: number | null) => void;
   onBoost: (b: BoosterType) => void;
   onNext: () => void;
+  /** Online: seats that already pressed "Дальше" (the reveal closes when everyone has). */
+  continued?: PlayerId[];
 };
 
 const LETTERS = ["А", "Б", "В", "Г"];
+
+/** Players still in the match who have not pressed "Дальше" yet (other than me). */
+function participantsLeft(state: MatchState, continued: PlayerId[], me: PlayerId): PlayerId[] {
+  return state.players.filter((p) => p !== me && !state.eliminated.includes(p) && !continued.includes(p));
+}
 const TILE_H = 52;
 const TILE_COMPACT_H = 34;
 
@@ -73,23 +81,24 @@ function useReducedStage(reveal: Reveal | null, numeric: boolean) {
 
 /** Header strip: who plays against whom, and for what. */
 function Strip({ state, question, q, reveal, stage }: { state: MatchState; question: PublicQuestion; q: ActiveQuestion | null; reveal: Reveal | null; stage: number }) {
+  const me = useMe();
   const kind = (q ?? reveal)!.kind;
   const battle = state.battle;
   let title = "Раздел системы";
   let sub = "Самый быстрый верный — 2 планеты";
-  const opponents = opponentSeats(state);
+  const opponents = opponentSeats(state, me);
   const duel = opponents.length === 1;
   if (kind === "battle" && battle) {
     const planet = planetName(state, battle.target);
-    if (isMe(battle.attacker)) {
+    if (isMe(battle.attacker, me)) {
       title = `Атака: ${planet}`;
-      sub = duel ? "Ответьте верно, а соперник — нет" : `Ответьте верно, а ${seatName(state, battle.defender)} — нет`;
-    } else if (isMe(battle.defender)) {
+      sub = duel ? "Ответьте верно, а соперник — нет" : `Ответьте верно, а ${seatName(state, battle.defender, me)} — нет`;
+    } else if (isMe(battle.defender, me)) {
       title = `Оборона: ${planet}`;
       sub = "Ответьте верно, чтобы отбить атаку";
     } else {
       title = `Бой за ${planet}`;
-      sub = `${seatName(state, battle.attacker)} атакует, ${seatName(state, battle.defender)} обороняется`;
+      sub = `${seatName(state, battle.attacker, me)} атакует, ${seatName(state, battle.defender, me)} обороняется`;
     }
   } else if (kind === "tiebreak") {
     title = "Решающий вопрос";
@@ -98,9 +107,9 @@ function Strip({ state, question, q, reveal, stage }: { state: MatchState; quest
     title = "Ва-банк";
     const bets = state.finaleBets;
     sub = bets
-      ? `Ставки: ${[mySeat, ...opponents]
+      ? `Ставки: ${[me, ...opponents]
           .filter((p) => bets[p] !== undefined)
-          .map((p) => `${isMe(p) ? "вы" : duel ? "соперник" : seatName(state, p)} ${formatNumber(bets[p]!)}`)
+          .map((p) => `${isMe(p, me) ? "вы" : duel ? "соперник" : seatName(state, p, me)} ${formatNumber(bets[p]!)}`)
           .join(" · ")}`
       : "";
   } else if (question.type === "numeric") {
@@ -110,7 +119,7 @@ function Strip({ state, question, q, reveal, stage }: { state: MatchState; quest
   const status = (p: PlayerId) => {
     if (reveal) {
       const a = reveal.answers[p];
-      if (!a || (!isMe(p) && stage < 1)) return { text: "", tone: colors.dim };
+      if (!a || (!isMe(p, me) && stage < 1)) return { text: "", tone: colors.dim };
       if (a.value === null) return { text: "нет ответа", tone: colors.dim };
       if (stage < 2) return { text: formatSeconds(a.elapsedMs), tone: colors.muted };
       return { text: `${a.correct || reveal.winner === p ? "✓" : "✕"} ${formatSeconds(a.elapsedMs)}`, tone: a.correct || reveal.winner === p ? colors.gold : colors.muted };
@@ -123,8 +132,8 @@ function Strip({ state, question, q, reveal, stage }: { state: MatchState; quest
   const side = (p: PlayerId, compact = false) => {
     const s = status(p);
     return (
-      <View key={p} style={[compact ? styles.sideCompact : styles.side, !isMe(p) && !compact && { alignItems: "flex-end" }]}>
-        <Avatar id={seatAvatarId(state, p)} size={compact ? 30 : 40} ring={seatColor(state, p)} uid={`strip-${p}`} />
+      <View key={p} style={[compact ? styles.sideCompact : styles.side, !isMe(p, me) && !compact && { alignItems: "flex-end" }]}>
+        <Avatar id={seatAvatarId(state, p, me)} size={compact ? 30 : 40} ring={seatColor(state, p, me)} uid={`strip-${p}`} />
         <Text style={[styles.sideStatus, compact && styles.sideStatusCompact, { color: s.tone }]} numberOfLines={1}>
           {s.text}
         </Text>
@@ -134,7 +143,7 @@ function Strip({ state, question, q, reveal, stage }: { state: MatchState; quest
 
   return (
     <View style={styles.strip}>
-      {side(mySeat)}
+      {side(me)}
       <View style={styles.stripMid}>
         {battle && kind !== "expansion" && kind !== "finale" ? (
           <PlanetIcon id={battle.target} size={34} uid="strip" />
@@ -280,11 +289,12 @@ function Choice({
 }
 
 function Boosters({ state, q, onBoost }: { state: MatchState; q: ActiveQuestion; onBoost: (b: BoosterType) => void }) {
-  const usable = usableBoosters(state, mySeat);
+  const me = useMe();
+  const usable = usableBoosters(state, me);
   const type: BoosterType = q.question.type === "mcq" ? "fifty" : "range";
-  const count = state.boosters[mySeat]?.[type] ?? 0;
-  const used = q.question.type === "mcq" ? !!q.aids[mySeat]?.hidden : !!q.aids[mySeat]?.range;
-  if (!q.participants.includes(mySeat)) return null;
+  const count = state.boosters[me]?.[type] ?? 0;
+  const used = q.question.type === "mcq" ? !!q.aids[me]?.hidden : !!q.aids[me]?.range;
+  if (!q.participants.includes(me)) return null;
   const can = usable.includes(type);
   return (
     <Pressable
@@ -303,13 +313,21 @@ function Boosters({ state, q, onBoost }: { state: MatchState; q: ActiveQuestion;
   );
 }
 
-export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, onAnswer, onBoost, onNext }: Props) {
+export function QuestionStage({ state, q, reveal, answersAt, onAnswer, onBoost, onNext, continued }: Props) {
+  const me = useMe();
   const insets = useSafeAreaInsets();
   const question = (q?.question ?? reveal?.question)!;
   const numeric = question.type === "numeric";
   const stage = useReducedStage(reveal, numeric);
   const [chosen, setChosen] = useState<number | null>(null);
   const [typed, setTyped] = useState("");
+  // Online the answer is confirmed by the next snapshot; lock the stage as soon as it is sent.
+  const [sent, setSent] = useState(false);
+  const [pressedNext, setPressedNext] = useState(false);
+  const submit = (value: number | null) => {
+    setSent(true);
+    onAnswer(value);
+  };
   const [showAnswers, setShowAnswers] = useState(() => Date.now() >= answersAt);
 
   useEffect(() => {
@@ -321,8 +339,8 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
   // Sound + haptic on the "correct answer" beat.
   useEffect(() => {
     if (!reveal || stage !== 2) return;
-    const mine = reveal.answers[mySeat];
-    const good = mine && (mine.correct || isMe(reveal.winner));
+    const mine = reveal.answers[me];
+    const good = mine && (mine.correct || isMe(reveal.winner, me));
     if (!mine) return;
     if (good) {
       sound.play("correct");
@@ -349,23 +367,23 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
     if (reveal && stage === 2) scrollRef.current?.scrollToEnd({ animated: true });
   }, [reveal, stage]);
 
-  const opponents = opponentSeats(state);
-  const answered = !!q?.answers[mySeat];
+  const opponents = opponentSeats(state, me);
+  const answered = !!q?.answers[me] || sent;
   const participants = q?.participants ?? (Object.keys(reveal!.answers) as PlayerId[]);
-  const participating = (q ?? reveal)!.kind === "expansion" || participants.includes(mySeat);
+  const participating = (q ?? reveal)!.kind === "expansion" || participants.includes(me);
   const locked = !!reveal || answered || !participating || !showAnswers;
-  const aid = q?.aids[mySeat];
-  const mineIndex = reveal ? reveal.answers[mySeat]?.value ?? null : chosen;
-  const waitingFor = participants.filter((p) => !isMe(p));
+  const aid = q?.aids[me];
+  const mineIndex = reveal ? reveal.answers[me]?.value ?? null : chosen;
+  const waitingFor = participants.filter((p) => !isMe(p, me));
 
-  const verdict = reveal ? revealTitle(state, reveal) : null;
+  const verdict = reveal ? revealTitle(state, reveal, me) : null;
   // The verdict is painted in the winner's colour: vermilion = you, the opponent's colour otherwise.
   const verdictSeat: PlayerId | null = verdict?.seat ?? null;
-  const verdictFace = verdictSeat ? seatColor(state, verdictSeat) : colors.raisedHi;
-  const verdictInk = verdictSeat ? seatInk(state, verdictSeat) : colors.text;
+  const verdictFace = verdictSeat ? seatColor(state, verdictSeat, me) : colors.raisedHi;
+  const verdictInk = verdictSeat ? seatInk(state, verdictSeat, me) : colors.text;
 
   const myRewards = reveal
-    ? reveal.rewards.filter((r) => isMe(r.player)).map((r) => `+1 «${BOOSTER_LABELS[r.booster].name}»`)
+    ? reveal.rewards.filter((r) => isMe(r.player, me)).map((r) => `+1 «${BOOSTER_LABELS[r.booster].name}»`)
     : [];
   return (
     <View style={[styles.root, { paddingTop: insets.top + 6 }]}>
@@ -374,7 +392,7 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
       <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={styles.scroll} bounces={false}>
         <Slab color={colors.paper} shadow={colors.bgDeep} depth={5} radius={6}>
           {q && !reveal ? (
-            <TimerBar q={q} answersAt={answersAt} active={!answered && participating} onExpire={() => onAnswer(null)} />
+            <TimerBar q={q} answersAt={answersAt} active={!answered && participating} onExpire={() => submit(null)} />
           ) : (
             <View style={[styles.timerTrack, { backgroundColor: colors.paperLine }]} />
           )}
@@ -396,13 +414,13 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
                 answer={reveal.correctValue}
                 unit={question.unit}
                 winner={reveal.winner}
-                pins={[mySeat, ...opponents]
-                  .filter((p) => isMe(p) || reveal.answers[p])
+                pins={[me, ...opponents]
+                  .filter((p) => isMe(p, me) || reveal.answers[p])
                   .map((p) => ({
                     key: p,
                     value: reveal.answers[p]?.value ?? null,
-                    color: seatColor(state, p),
-                    label: isMe(p) ? "вы" : opponents.length === 1 ? "соперник" : seatName(state, p),
+                    color: seatColor(state, p, me),
+                    label: isMe(p, me) ? "вы" : opponents.length === 1 ? "соперник" : seatName(state, p, me),
                   }))}
               />
             )}
@@ -442,7 +460,7 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
                 mine={mineIndex === i}
                 others={opponents
                   .filter((p) => reveal?.answers[p]?.value === i)
-                  .map((p) => ({ seat: p, avatar: seatAvatarId(state, p), color: seatColor(state, p) }))}
+                  .map((p) => ({ seat: p, avatar: seatAvatarId(state, p, me), color: seatColor(state, p, me) }))}
                 correct={reveal?.correctIndex === i}
                 locked={locked}
                 stage={stage}
@@ -452,7 +470,7 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
                   haptics.tap();
                   sound.play("tap");
                   setChosen(i);
-                  onAnswer(i);
+                  submit(i);
                 }}
               />
             ))}
@@ -466,7 +484,7 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
               disabled={answered}
               onSubmit={() => {
                 const v = parseNumeric(typed);
-                if (v !== null && !answered) onAnswer(v);
+                if (v !== null && !answered) submit(v);
               }}
             />
           </Animated.View>
@@ -491,9 +509,9 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
         )}
         {reveal && stage >= 3 && verdict && (
           <Animated.View entering={FadeInDown.duration(220).easing(Easing.out(Easing.cubic))} style={{ gap: 10 }}>
-            <Slab color={verdictFace} shadow={verdictSeat ? seatDeep(state, verdictSeat) : colors.bgDeep} depth={3}>
+            <Slab color={verdictFace} shadow={verdictSeat ? seatDeep(state, verdictSeat, me) : colors.bgDeep} depth={3}>
               <View style={styles.verdictRow}>
-                {verdictSeat && <Avatar id={seatAvatarId(state, verdictSeat)} size={34} uid="verdict" />}
+                {verdictSeat && <Avatar id={seatAvatarId(state, verdictSeat, me)} size={34} uid="verdict" />}
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.verdictTitle, { color: verdictInk }]} numberOfLines={1}>
                     {verdict.title}
@@ -506,7 +524,23 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
                 </View>
               </View>
             </Slab>
-            <Button title="Дальше" size="md" onPress={onNext} />
+            {continued && (pressedNext || continued.includes(me)) ? (
+              <Text style={styles.nextWait} numberOfLines={1}>
+                {(() => {
+                  const rest = participantsLeft(state, continued, me);
+                  return rest.length ? `Ждём: ${rest.map((p) => seatName(state, p, me)).join(", ")}…` : "Дальше…";
+                })()}
+              </Text>
+            ) : (
+              <Button
+                title="Дальше"
+                size="md"
+                onPress={() => {
+                  setPressedNext(true);
+                  onNext();
+                }}
+              />
+            )}
           </Animated.View>
         )}
       </View>
@@ -562,6 +596,15 @@ const styles = StyleSheet.create({
   mark: { fontFamily: fonts.display, fontSize: 18 },
   reading: { height: 4 * 59, alignItems: "center", justifyContent: "center" },
   readingText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.dim, letterSpacing: 1, textTransform: "uppercase" },
+  nextWait: {
+    minHeight: 48,
+    textAlignVertical: "center",
+    paddingTop: 14,
+    fontFamily: fonts.bodySemi,
+    fontSize: 14,
+    color: colors.muted,
+    textAlign: "center",
+  },
   waiting: { flex: 1, fontFamily: fonts.body, fontSize: 13, color: colors.muted, textAlign: "right" },
   booster: {
     flexDirection: "row",

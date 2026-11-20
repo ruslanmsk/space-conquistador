@@ -23,6 +23,9 @@ const PALETTES: SeatPalette[] = [
   { color: colors.plum, deep: colors.plumDeep, ink: colors.plumInk, soft: colors.plumSoft, dash: "2.2 0.6 0.6 0.6" },
 ];
 
+/** Colour of a slot (0 = me) outside a match, e.g. in the waiting room. */
+export const slotColor = (slot: number) => (PALETTES[slot] ?? NEUTRAL).color;
+
 const NEUTRAL: SeatPalette = { color: colors.neutral, deep: colors.line, ink: colors.text, soft: "transparent" };
 
 /** 0 for me, then 1.. for opponents in seat order starting after me. */
@@ -38,39 +41,39 @@ function palette(state: MatchState, seat: PlayerId | null | undefined, me: Playe
   return PALETTES[seatSlot(state, seat, me)] ?? NEUTRAL;
 }
 
-export const seatColor = (state: MatchState, seat: PlayerId | null | undefined, me = mySeat) => palette(state, seat, me).color;
-export const seatDeep = (state: MatchState, seat: PlayerId | null | undefined, me = mySeat) => palette(state, seat, me).deep;
-export const seatInk = (state: MatchState, seat: PlayerId | null | undefined, me = mySeat) => palette(state, seat, me).ink;
-export const seatSoft = (state: MatchState, seat: PlayerId | null | undefined, me = mySeat) => palette(state, seat, me).soft;
+export const seatColor = (state: MatchState, seat: PlayerId | null | undefined, me: PlayerId = mySeat) => palette(state, seat, me).color;
+export const seatDeep = (state: MatchState, seat: PlayerId | null | undefined, me: PlayerId = mySeat) => palette(state, seat, me).deep;
+export const seatInk = (state: MatchState, seat: PlayerId | null | undefined, me: PlayerId = mySeat) => palette(state, seat, me).ink;
+export const seatSoft = (state: MatchState, seat: PlayerId | null | undefined, me: PlayerId = mySeat) => palette(state, seat, me).soft;
 /** Map ring dash pattern: solid for me, a distinct pattern per opponent. */
-export const seatDash = (state: MatchState, seat: PlayerId | null | undefined, me = mySeat) => palette(state, seat, me).dash;
+export const seatDash = (state: MatchState, seat: PlayerId | null | undefined, me: PlayerId = mySeat) => palette(state, seat, me).dash;
 
-export const isMe = (seat: PlayerId | null | undefined, me = mySeat) => seat === me;
+export const isMe = (seat: PlayerId | null | undefined, me: PlayerId = mySeat) => seat === me;
 
 /** "Вы" for me, otherwise the seat's name (the bot's commander name). */
-export function seatName(state: MatchState, seat: PlayerId, me = mySeat): string {
+export function seatName(state: MatchState, seat: PlayerId, me: PlayerId = mySeat): string {
   if (seat === me) return "Вы";
   return getSeat(state, seat)?.name ?? seat;
 }
 
 /** Avatar look id: "you" for me, the commander id for bots. */
-export function seatAvatarId(state: MatchState, seat: PlayerId, me = mySeat): string {
+export function seatAvatarId(state: MatchState, seat: PlayerId, me: PlayerId = mySeat): string {
   if (seat === me) return "you";
   return getSeat(state, seat)?.opponent?.id ?? seat;
 }
 
 /** Everyone else, in seat order starting after me (slot 1, 2, …). */
-export function opponentSeats(state: MatchState, me = mySeat): PlayerId[] {
+export function opponentSeats(state: MatchState, me: PlayerId = mySeat): PlayerId[] {
   return state.players.filter((p) => p !== me).sort((a, b) => seatSlot(state, a, me) - seatSlot(state, b, me));
 }
 
 /** Me first, then opponents in slot order. */
-export function seatsFromMe(state: MatchState, me = mySeat): PlayerId[] {
+export function seatsFromMe(state: MatchState, me: PlayerId = mySeat): PlayerId[] {
   return [me, ...opponentSeats(state, me)].filter((p) => state.players.includes(p));
 }
 
 /** Opponents still in the match. */
-export function liveOpponents(state: MatchState, me = mySeat): PlayerId[] {
+export function liveOpponents(state: MatchState, me: PlayerId = mySeat): PlayerId[] {
   const live = activePlayers(state);
   return opponentSeats(state, me).filter((p) => live.includes(p));
 }

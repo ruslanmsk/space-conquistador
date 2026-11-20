@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { formatNumber, phaseLabel, plural } from "../game/labels";
 import { isMe, seatAvatarId, seatColor, seatName, seatsFromMe } from "../game/seats";
+import { useMe } from "../game/me";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/type";
 import { Avatar } from "./Avatar";
@@ -48,16 +49,17 @@ function Plate({
   right: boolean;
   compact: boolean;
 }) {
+  const me = useMe();
   const score = useCountUp(getScores(state)[player] ?? 0);
   const planets = ownedPlanets(state, player).length;
-  const color = seatColor(state, player);
-  const name = seatName(state, player);
+  const color = seatColor(state, player, me);
+  const name = seatName(state, player, me);
   const b = state.boosters[player] ?? { fifty: 0, range: 0 };
   const streak = state.streak[player] ?? 0;
   const out = state.eliminated.includes(player);
   return (
     <View style={[styles.plate, right && styles.plateRight, compact && styles.plateCompact, active && { borderColor: color }, out && { opacity: 0.45 }]}>
-      <Avatar id={seatAvatarId(state, player)} size={compact ? 28 : 36} ring={color} uid={`hud-${player}`} />
+      <Avatar id={seatAvatarId(state, player, me)} size={compact ? 28 : 36} ring={color} uid={`hud-${player}`} />
       <View style={[styles.plateText, right && { alignItems: "flex-end" }]}>
         <Text style={styles.name} numberOfLines={1}>
           {name}
@@ -83,18 +85,19 @@ function Plate({
 }
 
 export function Hud({ state }: { state: MatchState }) {
+  const me = useMe();
   const step = state.step;
   const actor =
     step.type === "pick" ? step.queue[0] : step.type === "attack" ? step.player : null;
   const phase = phaseLabel(state);
   const turns = state.config.battleTurns;
-  const seats = seatsFromMe(state);
+  const seats = seatsFromMe(state, me);
   const duel = seats.length === 2;
   return (
     <View>
       <View style={[styles.row, !duel && { gap: 4 }]}>
         {seats.map((p) => (
-          <Plate key={p} state={state} player={p} active={actor === p} right={duel && !isMe(p)} compact={!duel} />
+          <Plate key={p} state={state} player={p} active={actor === p} right={duel && !isMe(p, me)} compact={!duel} />
         ))}
       </View>
       <View style={styles.phase}>

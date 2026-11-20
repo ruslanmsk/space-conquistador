@@ -5,7 +5,8 @@ import Animated, { FadeIn, FadeInDown, ZoomIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatNumber, formatSeconds, planetName } from "../game/labels";
 import { starsFor } from "../storage/progress";
-import { mainOpponent, mySeat, seatAvatarId, seatColor, seatName, seatsFromMe } from "../game/seats";
+import { mainOpponent, seatAvatarId, seatColor, seatName, seatsFromMe } from "../game/seats";
+import { useMe } from "../game/me";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/type";
 import { haptics } from "../utils/haptics";
@@ -13,7 +14,16 @@ import { sound } from "../utils/sound";
 import { Avatar } from "./Avatar";
 import { Button } from "./Button";
 
-type Props = { state: MatchState; onRematch: () => void; onNext: (() => void) | null; onMenu: () => void };
+type Props = {
+  state: MatchState;
+  /** null: the rematch is not up to this player (online: only the host restarts) — `rematchNote` explains. */
+  onRematch: (() => void) | null;
+  rematchNote?: string;
+  onNext: (() => void) | null;
+  onMenu: () => void;
+  /** Bot campaign: stars for the mission. Off online. */
+  campaign?: boolean;
+};
 
 /** One stat row: mine on the left, the label in the middle, opponents' on the right. */
 function Stat({ label, values }: { label: string; values: { text: string; color: string }[] }) {
@@ -46,20 +56,21 @@ function Star({ on, delay }: { on: boolean; delay: number }) {
   );
 }
 
-export function ResultPanel({ state, onRematch, onNext, onMenu }: Props) {
+export function ResultPanel({ state, onRematch, rematchNote, onNext, onMenu, campaign = true }: Props) {
+  const me = useMe();
   const insets = useSafeAreaInsets();
   const scores = getScores(state);
-  const win = state.winner === mySeat;
+  const win = state.winner === me;
   const draw = state.winner === "draw";
   const stars = starsFor(state);
   const opp = mainOpponent(state);
-  const seats = seatsFromMe(state);
+  const seats = seatsFromMe(state, me);
   const duel = seats.length === 2;
   const tally = (p: PlayerId) => state.tally[p] ?? NO_TALLY;
-  const row = (f: (t: PlayerTally) => string) => seats.map((p) => ({ text: f(tally(p)), color: seatColor(state, p) }));
+  const row = (f: (t: PlayerTally) => string) => seats.map((p) => ({ text: f(tally(p)), color: seatColor(state, p, me) }));
   const lastFall = [...state.events].reverse().find((e) => e.type === "capital-fell");
   const fallenCapital = lastFall?.type === "capital-fell" ? state.map.planets.find((p) => p.capitalOf === lastFall.loser) : undefined;
-  const winnerName = state.winner && state.winner !== "draw" ? seatName(state, state.winner) : "";
+  const winnerName = state.winner && state.winner !== "draw" ? seatName(state, state.winner, me) : "";
 
   useEffect(() => {
     sound.play(win ? "win" : "lose");
@@ -88,27 +99,31 @@ export function ResultPanel({ state, onRematch, onNext, onMenu }: Props) {
     <View style={[styles.root, { paddingTop: insets.top + 20 }]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}>
         <Animated.Text entering={FadeIn.duration(300)} style={styles.kicker}>
-          {duel ? seatName(state, seats[1]!) : state.map.name}
+          {duel ? `Соперник: ${seatName(state, seats[1]!, me)}` : state.map.name}
         </Animated.Text>
         <Animated.Text entering={FadeInDown.delay(80).duration(350)} style={[styles.title, { color: draw ? colors.text : win ? colors.gold : colors.human }]}>
           {title}
         </Animated.Text>
         <Text style={styles.reason}>{reason}</Text>
 
-        <View style={styles.stars}>
-          <Star on={stars >= 1} delay={300} />
-          <Star on={stars >= 2} delay={450} />
-          <Star on={stars >= 3} delay={600} />
-        </View>
-        <Text style={styles.starHint}>★ победа · ★★ все щиты целы · ★★★ взять столицу</Text>
+        {campaign && (
+          <>
+            <View style={styles.stars}>
+              <Star on={stars >= 1} delay={300} />
+              <Star on={stars >= 2} delay={450} />
+              <Star on={stars >= 3} delay={600} />
+            </View>
+            <Text style={styles.starHint}>★ победа · ★★ все щиты целы · ★★★ взять столицу</Text>
+          </>
+        )}
 
         <View style={[styles.scoreRow, !duel && { gap: 10 }]}>
           {seats.map((p, i) => (
             <View key={p} style={styles.scoreGroup}>
               {i > 0 && <Text style={[styles.vs, !duel && styles.vsSmall]}>:</Text>}
               <View style={[styles.scoreSide, state.eliminated.includes(p) && { opacity: 0.5 }]}>
-                <Avatar id={seatAvatarId(state, p)} size={duel ? 52 : 40} ring={seatColor(state, p)} uid={`res-${p}`} />
-                <Text style={[styles.score, !duel && styles.scoreSmall, { color: seatColor(state, p) }]}>
+                <Avatar id={seatAvatarId(state, p, me)} size={duel ? 52 : 40} ring={seatColor(state, p, me)} uid={`res-${p}`} />
+                <Text style={[styles.score, !duel && styles.scoreSmall, { color: seatColor(state, p, me) }]}>
                   {formatNumber(scores[p] ?? 0)}
                 </Text>
               </View>
@@ -127,10 +142,12 @@ export function ResultPanel({ state, onRematch, onNext, onMenu }: Props) {
         <View style={styles.actions}>
           {win && onNext && !isLastOpponent ? (
             <Button title="Следующий соперник" onPress={onNext} />
-          ) : (
+          ) : onRematch ? (
             <Button title="Реванш" onPress={onRematch} />
-          )}
-          {win && onNext && !isLastOpponent && <Button title="Реванш" variant="secondary" onPress={onRematch} />}
+          ) : rematchNote ? (
+            <Text style={styles.note}>{rematchNote}</Text>
+          ) : null}
+          {win && onNext && !isLastOpponent && onRematch && <Button title="Реванш" variant="secondary" onPress={onRematch} />}
           <Button title="В меню" variant="ghost" onPress={onMenu} />
         </View>
       </ScrollView>
@@ -160,4 +177,5 @@ const styles = StyleSheet.create({
   statValNarrow: { width: 48, fontSize: 13, textAlign: "right" },
   statLabel: { flex: 1, fontFamily: fonts.bodySemi, fontSize: 13, color: colors.muted, textAlign: "center" },
   actions: { gap: 10, marginTop: 24 },
+  note: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.muted, textAlign: "center", paddingVertical: 12 },
 });

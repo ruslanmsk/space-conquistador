@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-nativ
 import Svg, { Circle, Defs, G, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import { useProgress } from "../hooks/useProgress";
 import { isMe, seatColor, seatDash, seatInk } from "../game/seats";
+import { useMe } from "../game/me";
 import { colors, svgFont } from "../theme/colors";
 import { planetLook } from "../theme/planets";
 import { CategoryGlyphG } from "./CategoryGlyph";
@@ -93,6 +94,7 @@ export const StarMap = memo(function StarMap({
   battleTarget,
   showSectors = true,
 }: Props) {
+  const me = useMe();
   const { map, owners } = state;
   const [box, setBox] = useState({ w: 0, h: 0 });
   const selectableSet = useMemo(() => new Set(selectable), [selectable]);
@@ -150,7 +152,7 @@ export const StarMap = memo(function StarMap({
                     y1={p.y}
                     x2={q.x}
                     y2={q.y}
-                    stroke={same ? seatColor(state, owners[p.id]) : colors.lineHi}
+                    stroke={same ? seatColor(state, owners[p.id], me) : colors.lineHi}
                     strokeOpacity={same ? 0.85 : 0.7}
                     strokeWidth={same ? 0.8 : 0.35}
                     strokeDasharray={same ? undefined : "0.8 1"}
@@ -162,7 +164,7 @@ export const StarMap = memo(function StarMap({
           {map.planets.map((p) => {
             const look = planetLook(p.id);
             const owner = owners[p.id];
-            const oc = seatColor(state, owner);
+            const oc = seatColor(state, owner, me);
             const ringR = look.r + 1.5;
             const isSel = selectableSet.has(p.id);
             const isPicked = selected === p.id;
@@ -180,8 +182,8 @@ export const StarMap = memo(function StarMap({
                     cy={p.y}
                     r={ringR}
                     stroke={oc}
-                    strokeWidth={isMe(owner) ? 1.3 : 1.1}
-                    strokeDasharray={seatDash(state, owner)}
+                    strokeWidth={isMe(owner, me) ? 1.3 : 1.1}
+                    strokeDasharray={seatDash(state, owner, me)}
                     fill="none"
                   />
                 ) : (
@@ -222,7 +224,7 @@ export const StarMap = memo(function StarMap({
                 <SvgText
                   x={p.x}
                   y={ly + 0.25}
-                  fill={owner ? seatInk(state, owner) : colors.muted}
+                  fill={owner ? seatInk(state, owner, me) : colors.muted}
                   fontSize={2.4}
                   fontWeight="700"
                   fontFamily={svgFont}
@@ -253,7 +255,7 @@ export const StarMap = memo(function StarMap({
                 x={p.x}
                 y={p.y}
                 r={planetLook(p.id).r}
-                color={seatColor(state, owners[p.id])}
+                color={seatColor(state, owners[p.id], me)}
                 onDone={() => setFlashes((all) => all.filter((x) => x.key !== f.key))}
               />
             );

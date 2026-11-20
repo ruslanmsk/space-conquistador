@@ -55,25 +55,25 @@ export function phaseLabel(state: MatchState): { title: string; detail: string }
  * Bottom hint for map steps (questions have their own stage). `seat` is the opponent who is
  * acting when tone is "other".
  */
-export function stepHint(state: MatchState): { text: string; tone: "you" | "other" | "info"; seat?: PlayerId } {
+export function stepHint(state: MatchState, me: PlayerId = mySeat): { text: string; tone: "you" | "other" | "info"; seat?: PlayerId } {
   const step = state.step;
   if (step.type === "pick") {
     const who = step.queue[0];
     if (!who) return { text: "", tone: "info" };
-    if (isMe(who)) {
+    if (isMe(who, me)) {
       let left = 0;
-      while (step.queue[left] === mySeat) left++;
+      while (step.queue[left] === me) left++;
       return {
         text: `Выберите свободную планету рядом со своими · ещё ${left}`,
         tone: "you",
       };
     }
-    return { text: `${seatName(state, who)} выбирает планету…`, tone: "other", seat: who };
+    return { text: `${seatName(state, who, me)} выбирает планету…`, tone: "other", seat: who };
   }
   if (step.type === "attack") {
-    return isMe(step.player)
+    return isMe(step.player, me)
       ? { text: "Ваш ход. Выберите вражескую планету — вопрос будет из её сектора", tone: "you" }
-      : { text: `${seatName(state, step.player)} выбирает цель…`, tone: "other", seat: step.player };
+      : { text: `${seatName(state, step.player, me)} выбирает цель…`, tone: "other", seat: step.player };
   }
   return { text: "", tone: "info" };
 }
@@ -100,12 +100,13 @@ export function signed(n: number): string {
 export function revealTitle(
   state: MatchState,
   reveal: Reveal,
+  me: PlayerId = mySeat,
 ): { title: string; subtitle?: string; tone: "good" | "bad" | "neutral"; seat?: PlayerId } {
-  const t = verdictText(state, reveal);
-  if (t.tone === "good") return { ...t, seat: mySeat };
+  const t = verdictText(state, reveal, me);
+  if (t.tone === "good") return { ...t, seat: me };
   if (t.tone === "bad") {
     const w = reveal.winner;
-    return { ...t, seat: w && !isMe(w) ? w : opponentSeats(state)[0] };
+    return { ...t, seat: w && !isMe(w, me) ? w : opponentSeats(state, me)[0] };
   }
   return t;
 }
@@ -113,24 +114,28 @@ export function revealTitle(
 function verdictText(
   state: MatchState,
   reveal: Reveal,
+  me: PlayerId,
 ): { title: string; subtitle?: string; tone: "good" | "bad" | "neutral" } {
   const o = reveal.outcome;
   const duel = state.players.length === 2;
-  const name = (p: PlayerId) => seatName(state, p);
+  const name = (p: PlayerId) => seatName(state, p, me);
   // In a duel the other side is just "соперник"; with more players we name them.
   const rival = (p: PlayerId) => (duel ? "соперник" : name(p));
   switch (o.type) {
     case "expansion": {
-      const mine = o.picks[mySeat] ?? 0;
-      const others = opponentSeats(state).filter((p) => (o.picks[p] ?? 0) > 0);
+      const mine = o.picks[me] ?? 0;
+      const others = opponentSeats(state, me).filter((p) => (o.picks[p] ?? 0) > 0);
       if (!mine && !others.length) return { title: "Никто не угадал", subtitle: "Планеты остаются свободными", tone: "neutral" };
       const parts = [
         mine ? `вам ${mine} ${plural(mine, ["планета", "планеты", "планет"])}` : null,
-        ...others.map((p) => (duel ? `сопернику ${o.picks[p]}` : `${name(p)} — ${o.picks[p]}`)),
+        ...others.map((p) => {
+          const n = o.picks[p] ?? 0;
+          return duel ? `сопернику ${n} ${plural(n, ["планета", "планеты", "планет"])}` : `${name(p)} — ${n}`;
+        }),
       ]
         .filter(Boolean)
         .join(", ");
-      const won = isMe(reveal.winner);
+      const won = isMe(reveal.winner, me);
       return {
         title: won ? "Раунд ваш" : duel || !reveal.winner ? "Раунд за соперником" : `Раунд за ${name(reveal.winner)}`,
         subtitle: `Захват: ${parts}`,
@@ -141,27 +146,27 @@ function verdictText(
       return { title: "Оба правы", subtitle: "Решающий числовой вопрос: побеждает самый точный", tone: "neutral" };
     case "captured": {
       const planet = planetName(state, o.battle.target);
-      if (isMe(o.battle.attacker))
+      if (isMe(o.battle.attacker, me))
         return { title: `${planet} ваша`, subtitle: "Отвоёванная планета стоит на 100 очков больше", tone: "good" };
       return {
         title: `${name(o.battle.attacker)} забирает ${planet}`,
-        tone: isMe(o.battle.defender) ? "bad" : "neutral",
+        tone: isMe(o.battle.defender, me) ? "bad" : "neutral",
       };
     }
     case "shield-down":
-      if (isMe(o.battle.attacker))
+      if (isMe(o.battle.attacker, me))
         return { title: "Щит столицы пробит", subtitle: `Осталось щитов: ${o.shieldsLeft}`, tone: "good" };
-      if (isMe(o.battle.defender))
+      if (isMe(o.battle.defender, me))
         return { title: "Ваш щит пробит", subtitle: `Осталось щитов: ${o.shieldsLeft}`, tone: "bad" };
       return { title: `${name(o.battle.attacker)} пробивает щит`, subtitle: `${name(o.battle.defender)}: осталось щитов ${o.shieldsLeft}`, tone: "neutral" };
     case "capital-fell":
-      if (isMe(o.battle.attacker))
+      if (isMe(o.battle.attacker, me))
         return {
           title: "Столица пала",
           subtitle: o.final ? "Вся система ваша" : `${name(o.battle.defender)} выбывает, его планеты ваши`,
           tone: "good",
         };
-      if (isMe(o.battle.defender)) return { title: "Ваша столица пала", tone: "bad" };
+      if (isMe(o.battle.defender, me)) return { title: "Ваша столица пала", tone: "bad" };
       return {
         title: `${name(o.battle.defender)}: столица пала`,
         subtitle: `Планеты переходят к ${name(o.battle.attacker)}`,
@@ -169,15 +174,15 @@ function verdictText(
       };
     case "defended": {
       const planet = planetName(state, o.battle.target);
-      if (isMe(o.battle.defender)) return { title: `${planet} устояла`, subtitle: "+100 за оборону", tone: "good" };
-      if (isMe(o.battle.attacker))
+      if (isMe(o.battle.defender, me)) return { title: `${planet} устояла`, subtitle: "+100 за оборону", tone: "good" };
+      if (isMe(o.battle.attacker, me))
         return { title: "Атака отбита", subtitle: `${planet} остаётся за ${duel ? "соперником" : name(o.battle.defender)}`, tone: "bad" };
       return { title: `${planet} устояла`, subtitle: `${name(o.battle.defender)} отбивает атаку`, tone: "neutral" };
     }
     case "finale": {
       const d = o.deltas;
-      const mine = d[mySeat];
-      const others = opponentSeats(state)
+      const mine = d[me];
+      const others = opponentSeats(state, me)
         .filter((p) => d[p] !== undefined)
         .map((p) => `${rival(p)} ${signed(d[p]!)}`);
       if (mine === undefined) return { title: "Финал сыгран", subtitle: others.join(" · "), tone: "neutral" };

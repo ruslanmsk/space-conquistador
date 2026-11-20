@@ -15,6 +15,11 @@ const LOOKS: Record<string, Look> = {
   archivist: { helmet: "#B9A27A", visor: colors.ink, crest: "goggles" },
   engineer: { helmet: "#6FA9A0", visor: colors.ink, crest: "antenna" },
   admiral: { helmet: "#2F5E99", visor: colors.ink, crest: "crown" },
+  // Online players are drawn by seat (the frame carries their colour).
+  p1: { helmet: "#C9B48A", visor: colors.ink, crest: "fin" },
+  p2: { helmet: "#9FB7D9", visor: colors.ink, crest: "antenna" },
+  p3: { helmet: "#8FC2AE", visor: colors.ink, crest: "star" },
+  p4: { helmet: "#D3A3C4", visor: colors.ink, crest: "goggles" },
 };
 
 export const Avatar = memo(function Avatar({

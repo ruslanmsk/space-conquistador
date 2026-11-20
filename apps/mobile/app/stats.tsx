@@ -1,10 +1,12 @@
 import { CATEGORIES } from "@space-conquistador/game-core";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "../src/components/Button";
 import { CategoryGlyph } from "../src/components/CategoryGlyph";
+import { NicknameForm } from "../src/components/NicknameForm";
+import { useOnlineStore } from "../src/online/onlineStore";
 import { Screen } from "../src/components/Screen";
 import { useProgressData } from "../src/hooks/useProgressData";
 import { colors } from "../src/theme/colors";
@@ -16,8 +18,11 @@ export default function Stats() {
   const insets = useSafeAreaInsets();
   const p = useProgressData();
   const [prefs, setPrefs] = useState<Prefs | null>(null);
+  const session = useOnlineStore((s) => s.session);
+  const [editingNick, setEditingNick] = useState(false);
   useEffect(() => {
     void loadPrefs().then(setPrefs);
+    void useOnlineStore.getState().init();
   }, []);
 
   const rows = CATEGORIES.map((c) => {
@@ -65,6 +70,30 @@ export default function Stats() {
           </View>
         ))}
 
+        {session && (
+          <>
+            <Text style={styles.section}>Онлайн</Text>
+            <View style={styles.pref}>
+              <Text style={styles.prefText} numberOfLines={1}>
+                Ник: {session.player.nickname}
+              </Text>
+              <Pressable hitSlop={8} onPress={() => setEditingNick((v) => !v)}>
+                <Text style={styles.link}>{editingNick ? "отмена" : "изменить"}</Text>
+              </Pressable>
+            </View>
+            {editingNick && (
+              <NicknameForm
+                initial={session.player.nickname}
+                submitTitle="Сохранить"
+                onSubmit={async (n) => {
+                  await useOnlineStore.getState().rename(n);
+                  setEditingNick(false);
+                }}
+              />
+            )}
+          </>
+        )}
+
         <Text style={styles.section}>Настройки</Text>
         {prefs && (
           <>
@@ -98,5 +127,6 @@ const styles = StyleSheet.create({
   fill: { height: "100%" },
   pct: { fontFamily: fonts.displayBold, fontSize: 12, color: colors.muted, width: 38, textAlign: "right" },
   pref: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
+  link: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.gold },
   prefText: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
 });

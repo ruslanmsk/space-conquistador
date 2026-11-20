@@ -2,7 +2,7 @@
   "expo": {
     "name": "Space Conquistador",
     "slug": "space-conquistador",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "scheme": "spaceconquistador",
     "userInterfaceStyle": "dark",
@@ -13,19 +13,30 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0a0a1a"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#121829"
       },
       "package": "com.spaceconquistador.app"
     },
     "web": {
       "bundler": "metro",
       "output": "single",
-      "backgroundColor": "#0a0a1a"
+      "backgroundColor": "#121829",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-audio"
-    ]
+      "expo-audio",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#121829"
+        }
+      ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }

@@ -7,6 +7,7 @@ import {
   createMatch,
   dispatch,
   restartQuestion,
+  usableBoosters,
   type Answer,
   type BoosterType,
   type GameAction,
@@ -115,6 +116,13 @@ export const useMatchStore = create<Store>((set, get) => {
         // Spend the booster a moment after the answers show, then think with its help.
         run(1000 - sinceStart, () => {
           plan.boosted = true;
+          if (!usableBoosters(match, "bot").includes(plan.boost!)) {
+            // Could not spend it after all: just answer without help.
+            plan.boost = null;
+            plan.answer = botAnswer(match, ctx, level);
+            scheduleBot();
+            return undefined;
+          }
           return { type: "BOOST", player: "bot", booster: plan.boost! };
         });
         return;

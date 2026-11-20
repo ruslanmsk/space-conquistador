@@ -1,7 +1,7 @@
 import { getScores, ownedPlanets, type MatchState, type PlayerId } from "@space-conquistador/game-core";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { formatNumber, phaseLabel } from "../game/labels";
+import { formatNumber, phaseLabel, plural } from "../game/labels";
 import { colors, playerColor } from "../theme/colors";
 import { fonts } from "../theme/type";
 import { Avatar } from "./Avatar";
@@ -44,10 +44,16 @@ function Plate({ state, player, active }: { state: MatchState; player: PlayerId;
         <Text style={styles.name} numberOfLines={1}>
           {name}
         </Text>
-        <Text style={[styles.score, { color }]}>{formatNumber(score)}</Text>
+        <View style={[styles.scoreRow, right && { flexDirection: "row-reverse" }]}>
+          <Text style={[styles.score, { color }]}>{formatNumber(score)}</Text>
+          {state.streak[player] >= 2 && (
+            <View style={styles.streak}>
+              <Text style={styles.streakText}>×{state.streak[player]}</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.meta} numberOfLines={1}>
-          {planets} пл · бустеры {b.fifty + b.range}
-          {state.streak[player] >= 2 ? ` · серия ${state.streak[player]}` : ""}
+          {planets} {plural(planets, ["планета", "планеты", "планет"])} · бустеров {b.fifty + b.range}
         </Text>
       </View>
     </View>
@@ -99,6 +105,9 @@ const styles = StyleSheet.create({
   plateText: { flex: 1, minWidth: 0 },
   name: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.muted },
   score: { fontFamily: fonts.display, fontSize: 20, lineHeight: 24, fontVariant: ["tabular-nums"] },
+  scoreRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  streak: { backgroundColor: colors.gold, borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1, borderWidth: 1.5, borderColor: colors.ink },
+  streakText: { fontFamily: fonts.display, fontSize: 10, color: colors.ink },
   meta: { fontFamily: fonts.body, fontSize: 10, color: colors.dim },
   phase: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 8 },
   phaseTitle: { fontFamily: fonts.displayBold, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: colors.text },

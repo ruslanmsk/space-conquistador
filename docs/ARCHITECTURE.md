@@ -17,12 +17,15 @@ apps/api             (будущее) HTTP + WebSocket
 
 - `ctx: GameContext = { questions, rng }` — банк вопросов и генератор случайных чисел (в тестах `seededRng(seed)`).
 - `createMatch(ctx, config)` — сразу возвращает матч с первым вопросом.
-- Действия: `ANSWER` (value `null` = не успел), `CONTINUE` (закрыть разбор), `PICK` (выбор планеты), `ATTACK`.
+- Действия: `ANSWER` (value `null` = не успел), `BOOST` (50/50 или «Вилка»), `CONTINUE` (закрыть разбор), `PICK` (выбор планеты), `ATTACK`, `WAGER` (ставка в финале).
+- Карта: у планеты `kind` (capital/world/giant/outpost) и сектор-категория `state.sectors[id]` (назначается случайно в `createMatch`). Вопрос атаки берётся из сектора цели.
+- Соперник — `config.opponent` (`Opponent`: уровень + сильные/слабые категории), список в `bot/opponents.ts`.
 - `state.step` — что происходит сейчас:
 
 ```
 question → reveal → (pick … | следующий вопрос)          фаза expansion
 attack → question(battle) → reveal → [question(tiebreak) → reveal] → attack …   фаза battle
+→ wager → question(finale) → reveal                                               фаза finale
 → finished
 ```
 
@@ -38,7 +41,9 @@ attack → question(battle) → reveal → [question(tiebreak) → reveal] → a
 - **Zustand** `useMatchStore`: держит `MatchState`, время начала вопроса и расписание ходов бота (таймеры). Правил не дублирует — только вызывает `dispatch`.
 - Сохранение матча и настроек — AsyncStorage (`src/storage`). Незаконченный вопрос после перезапуска начинается заново.
 - Карта — `react-native-svg`; нажатия — обычные `Pressable` поверх SVG (так стабильнее на вебе и удобнее на тач-экранах). Анимации колец — через `requestAnimationFrame`.
-- Тема: `src/theme/colors.ts`, внешний вид планет: `src/theme/planets.ts`.
+- Дизайн «Космоплакат»: токены `src/theme/colors.ts` и `src/theme/type.ts`, планеты `src/theme/planets.ts` + `components/PlanetArt.tsx`. Без градиентов и стекла в интерфейсе, жёсткие тени через `Slab`, верно = золото + ✓, игроки = вермильон/кобальт + второй признак (сплошное/пунктирное кольцо).
+- Анимации интерфейса — Reanimated (entering, shake); анимации внутри SVG — `useProgress` (rAF).
+- Звуки — `utils/sound.ts` (wav из `scripts/gen-sounds.py`), вибрация — `utils/haptics.ts`, обе отключаются в `/stats`.
 
 ## Расширение под онлайн
 

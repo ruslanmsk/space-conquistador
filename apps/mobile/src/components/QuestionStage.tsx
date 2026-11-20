@@ -289,6 +289,16 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
     }
   }, [reveal, stage]);
 
+  // Heavier beat when a capital shield breaks.
+  useEffect(() => {
+    if (!reveal || stage !== 3) return;
+    const t = reveal.outcome.type;
+    if (t === "shield-down" || t === "capital-fell") {
+      sound.play("shield");
+      haptics.heavy();
+    }
+  }, [reveal, stage]);
+
   const humanAnswer = reveal?.answers.human ?? q?.answers.human;
   const botAnswer = reveal?.answers.bot;
   const answered = !!q?.answers.human;

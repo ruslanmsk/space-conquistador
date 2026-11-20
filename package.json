@@ -10,9 +10,13 @@
     "web": "node scripts/web.mjs",
     "android": "npm run android --workspace=@space-conquistador/mobile",
     "ios": "npm run ios --workspace=@space-conquistador/mobile",
+    "server": "npm run dev --workspace=@space-conquistador/server",
+    "server:test": "npm run test --workspace=@space-conquistador/server",
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "check": "npm run validate:questions && npm run typecheck --workspace=@space-conquistador/game-core && npm run typecheck --workspace=@space-conquistador/mobile && npm run test --workspace=@space-conquistador/game-core",
+    "check": "npm run validate:questions && npm run typecheck --workspace=@space-conquistador/game-core && npm run typecheck --workspace=@space-conquistador/mobile && npm run test --workspace=@space-conquistador/game-core && npm run typecheck --workspace=@space-conquistador/protocol && npm run typecheck --workspace=@space-conquistador/server && npm run test --workspace=@space-conquistador/server",
     "validate:questions": "node scripts/validate-questions.mjs"
   },
   "engines": {

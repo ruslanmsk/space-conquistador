@@ -112,6 +112,12 @@ export type MatchTiming = {
 /**
  * Full picture for one client. `state` is safe to share: questions in it are PublicQuestion (no answers)
  * and the correct answer only appears inside a reveal.
+ *
+ * The server personalises `state` per seat while a step is open:
+ * - active question: `q.choiceOrder` is omitted; other seats' entries in `q.answers` are
+ *   `{ value: null, elapsedMs: 0 }` (only *that* they answered is visible); `q.aids` holds only your own aid;
+ * - wager step: other seats' entries in `bets` are 0 (only *that* they bet is visible).
+ * Everything is revealed in the following reveal / `finaleBets`.
  */
 export type MatchSnapshot = {
   matchId: string;

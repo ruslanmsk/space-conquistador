@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { OPPONENTS, type MatchState } from "@space-conquistador/game-core";
+import { mainOpponent, mySeat } from "../game/seats";
 
 const KEY = "space-conquistador/progress-v1";
 
@@ -61,9 +62,9 @@ export function nextOpponentIndex(p: Progress): number {
 
 /** ★ win, ★★ win with all capital shields intact, ★★★ win by taking the enemy capital. */
 export function starsFor(state: MatchState): number {
-  if (state.winner !== "human") return 0;
+  if (state.winner !== mySeat) return 0;
   if (state.endReason === "capital") return 3;
-  return state.shields.human === state.config.capitalShields ? 2 : 1;
+  return state.shields[mySeat] === state.config.capitalShields ? 2 : 1;
 }
 
 export async function recordAnswer(category: string, correct: boolean): Promise<void> {
@@ -79,15 +80,16 @@ export async function recordAnswer(category: string, correct: boolean): Promise<
 
 export async function recordMatch(state: MatchState): Promise<Progress> {
   const p = await loadProgress();
-  const id = state.config.opponent.id;
-  const stars = Math.max(p.stars[id] ?? 0, starsFor(state));
+  const id = mainOpponent(state)?.id;
+  const won = state.winner === mySeat;
+  const drew = state.winner === "draw";
   const next: Progress = {
     ...p,
-    wins: p.wins + (state.winner === "human" ? 1 : 0),
-    losses: p.losses + (state.winner === "bot" ? 1 : 0),
-    draws: p.draws + (state.winner === "draw" ? 1 : 0),
-    stars: { ...p.stars, [id]: stars },
-    bestStreak: Math.max(p.bestStreak, state.tally.human.bestStreak),
+    wins: p.wins + (won ? 1 : 0),
+    losses: p.losses + (!won && !drew && state.winner ? 1 : 0),
+    draws: p.draws + (drew ? 1 : 0),
+    stars: id ? { ...p.stars, [id]: Math.max(p.stars[id] ?? 0, starsFor(state)) } : p.stars,
+    bestStreak: Math.max(p.bestStreak, state.tally[mySeat]?.bestStreak ?? 0),
   };
   await save(next);
   return next;

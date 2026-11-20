@@ -2,7 +2,15 @@ import { getPlanet } from "../map/sol-system";
 import { displayedCorrectIndex, findQuestion } from "../questions";
 import { gaussian, pickRandom } from "../rng";
 import { maxWager, usableBoosters } from "../engine/match";
-import { getLegalAttackTargets, getLegalPicks, getScores, isCapital, otherPlayer } from "../engine/rules";
+import {
+  activePlayers,
+  getLegalAttackTargets,
+  getLegalPicks,
+  getScores,
+  isCapital,
+  ownedPlanets,
+  seatOpponent,
+} from "../engine/rules";
 import type {
   Answer,
   BoosterType,
@@ -36,19 +44,17 @@ export function botAccuracy(level: BotLevel, opponent: Opponent | undefined, cat
   return Math.max(0.15, Math.min(0.97, acc));
 }
 
-/** Simulated answer for the active question. `elapsedMs` is how long the bot "thinks". */
-export function botAnswer(
-  state: MatchState,
-  ctx: GameContext,
-  level: BotLevel,
-  player: PlayerId = "bot",
-): Answer {
+/**
+ * Simulated answer of the bot in seat `player` for the active question. `elapsedMs` is how long
+ * the bot "thinks". The seat's opponent profile (strong/weak categories) applies if it has one.
+ */
+export function botAnswer(state: MatchState, ctx: GameContext, level: BotLevel, player: PlayerId): Answer {
   if (state.step.type !== "question") throw new Error("botAnswer: no active question");
   const aq = state.step.q;
   const record = findQuestion(ctx, aq.question.id);
   const cfg = LEVELS[level];
   const rng = ctx.rng;
-  const opponent = player === "bot" ? state.config.opponent : undefined;
+  const opponent = seatOpponent(state, player);
   const accuracy = botAccuracy(level, opponent, record.category, record.difficulty);
   const aid = aq.aids[player];
 
@@ -86,7 +92,7 @@ export function botWantsBooster(
   state: MatchState,
   ctx: GameContext,
   level: BotLevel,
-  player: PlayerId = "bot",
+  player: PlayerId,
 ): BoosterType | null {
   const usable = usableBoosters(state, player);
   if (!usable.length || state.step.type !== "question") return null;
@@ -123,12 +129,11 @@ export function botChoosePick(
 ): PlanetId | undefined {
   const legal = getLegalPicks(state, player);
   if (level === "easy") return pickRandom(rng, legal);
-  const enemy = otherPlayer(player);
   return bestBy(legal, (id) => {
     const planet = getPlanet(state.map, id);
     const nbs = planet.neighbors;
     const free = nbs.filter((n) => state.owners[n] === null).length;
-    const borderEnemy = nbs.some((n) => state.owners[n] === enemy) ? 1.2 : 0;
+    const borderEnemy = nbs.some((n) => isEnemy(state.owners[n], player)) ? 1.2 : 0;
     const edge = sectorEdge(state, player, id) * 0.8;
     return nbs.length * 0.4 + free * 0.7 + borderEnemy + KIND_APPEAL[planet.kind] + edge + rng() * 1.2;
   });
@@ -142,39 +147,58 @@ export function botChooseAttack(
 ): PlanetId | undefined {
   const legal = getLegalAttackTargets(state, player);
   if (level === "easy") return pickRandom(rng, legal);
-  const enemy = otherPlayer(player);
+  const leader = leadingRival(state, player);
+  const planets = (p: PlayerId) => ownedPlanets(state, p).length;
   return bestBy(legal, (id) => {
+    const owner = state.owners[id]!;
+    // With several rivals: lean on the leader, and on whoever is nearly wiped out.
+    const focus = (owner === leader ? 0.8 : 0) + (planets(owner) <= 2 ? 0.6 : 0);
     if (isCapital(state, id)) {
-      const shields = state.shields[enemy];
-      return (shields <= 1 ? 10 : level === "hard" ? 3 : 1.5) + rng();
+      const shields = state.shields[owner] ?? 0;
+      return (shields <= 1 ? 10 : level === "hard" ? 3 : 1.5) + focus + rng();
     }
     const outpost = getPlanet(state.map, id).kind === "outpost" ? 0.8 : 0;
     const edge = sectorEdge(state, player, id) * (level === "hard" ? 2.5 : 1.5);
-    return (state.planetValue[id] ?? 0) / 100 + outpost + edge + rng() * 1.5;
+    return (state.planetValue[id] ?? 0) / 100 + outpost + edge + focus + rng() * 1.5;
   });
+}
+
+function isEnemy(owner: PlayerId | null | undefined, player: PlayerId): boolean {
+  return !!owner && owner !== player;
+}
+
+/** Rival with the highest score among players still in the match. */
+function leadingRival(state: MatchState, player: PlayerId): PlayerId | undefined {
+  const scores = getScores(state);
+  let best: PlayerId | undefined;
+  for (const p of activePlayers(state)) {
+    if (p !== player && (best === undefined || (scores[p] ?? 0) > (scores[best] ?? 0))) best = p;
+  }
+  return best;
 }
 
 /** Knowledge edge in a sector for this player: + strong, − weak. */
 function sectorEdge(state: MatchState, player: PlayerId, planet: PlanetId): number {
   const cat = state.sectors[planet];
-  const opponent = player === "bot" ? state.config.opponent : undefined;
+  const opponent = seatOpponent(state, player);
   if (!cat || !opponent) return 0;
   return opponent.strong.includes(cat) ? 1 : opponent.weak.includes(cat) ? -1 : 0;
 }
 
 /**
  * Final wager, Final-Jeopardy style: the leader bets just enough that it still wins when wrong,
- * the trailing side goes big. A strong category makes the bot bolder.
+ * the trailing side goes big. With several rivals it measures itself against the strongest one. A strong category makes the bot bolder.
  */
 export function botWager(state: MatchState, player: PlayerId, level: BotLevel, rng: Rng): number {
   const step = state.step;
   if (step.type !== "wager") return 0;
   const scores = getScores(state);
-  const me = scores[player];
-  const them = scores[otherPlayer(player)];
+  const rival = leadingRival(state, player);
+  const me = scores[player] ?? 0;
+  const them = rival ? (scores[rival] ?? 0) : 0;
   const max = maxWager(state, player);
-  const theirMax = maxWager(state, otherPlayer(player));
-  const opponent = player === "bot" ? state.config.opponent : undefined;
+  const theirMax = rival ? maxWager(state, rival) : 0;
+  const opponent = seatOpponent(state, player);
   const confident = opponent?.strong.includes(step.category) ? 1 : opponent?.weak.includes(step.category) ? -1 : 0;
   const round50 = (x: number) => Math.max(0, Math.min(max, Math.round(x / 50) * 50));
   if (level === "easy") return round50(max * rng());

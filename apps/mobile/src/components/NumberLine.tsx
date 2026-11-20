@@ -9,11 +9,13 @@ import { fonts } from "../theme/type";
 type Pin = { key: PlayerId; value: number | null; color: string; label: string };
 
 const ROW = 40; // vertical step between pin label rows, so close guesses never overlap
-const AXIS_Y = 2 * ROW + 26;
+
+/** Axis position: room for one label row per pin (at least two rows). */
+const axisY = (pins: number) => Math.max(2, pins) * ROW + 26;
 
 /**
- * Numeric reveal: both guesses drop onto a scale as pins, then the true value lands.
- * The closer guess is the winner: its pin gets a "БЛИЖЕ" tag, the other one fades.
+ * Numeric reveal: every guess drops onto a scale as a pin, then the true value lands.
+ * The closest guess is the winner: its pin gets a "БЛИЖЕ" tag, the others fade.
  */
 export function NumberLine({
   answer,
@@ -35,17 +37,19 @@ export function NumberLine({
   hi += span * 0.12;
   const x = (v: number) => ((v - lo) / (hi - lo)) * width;
   const landDelay = 150 + pins.length * 250 + 250;
+  const AXIS_Y = axisY(pins.length);
 
   return (
     <View>
-      <View style={styles.wrap} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-        <View style={styles.axis} />
+      <View style={[styles.wrap, { height: AXIS_Y + 58 }]} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+        <View style={[styles.axis, { top: AXIS_Y }]} />
         {width > 0 &&
           pins.map((p, i) =>
             p.value === null ? null : (
               <DropPin
                 key={p.key}
                 row={i}
+                axisY={AXIS_Y}
                 left={x(p.value)}
                 delay={150 + i * 250}
                 resolveDelay={landDelay + 250}
@@ -58,7 +62,7 @@ export function NumberLine({
               />
             ),
           )}
-        {width > 0 && <AnswerMark left={x(answer)} delay={landDelay} value={answer} unit={unit} />}
+        {width > 0 && <AnswerMark left={x(answer)} top={AXIS_Y - 6} delay={landDelay} value={answer} unit={unit} />}
       </View>
       {pins.every((p) => p.value === null) && <Text style={styles.none}>Никто не ответил</Text>}
     </View>
@@ -67,6 +71,7 @@ export function NumberLine({
 
 function DropPin({
   row,
+  axisY: AXIS_Y,
   left,
   delay,
   resolveDelay,
@@ -78,6 +83,7 @@ function DropPin({
   hasWinner,
 }: {
   row: number;
+  axisY: number;
   left: number;
   delay: number;
   resolveDelay: number;
@@ -123,14 +129,14 @@ function DropPin({
   );
 }
 
-function AnswerMark({ left, delay, value, unit }: { left: number; delay: number; value: number; unit?: string }) {
+function AnswerMark({ left, top, delay, value, unit }: { left: number; top: number; delay: number; value: number; unit?: string }) {
   const t = useSharedValue(0);
   useEffect(() => {
     t.value = withDelay(delay, withTiming(1, { duration: 320, easing: Easing.out(Easing.exp) }));
   }, [delay, t]);
   const style = useAnimatedStyle(() => ({ opacity: t.value, transform: [{ scale: 1.6 - 0.6 * t.value }] }));
   return (
-    <Animated.View style={[styles.answer, { left: left - 60 }, style]}>
+    <Animated.View style={[styles.answer, { left: left - 60, top }, style]}>
       <View style={styles.answerDiamond} />
       <Text style={styles.answerValue} numberOfLines={1}>
         {formatNumber(value)}
@@ -142,8 +148,8 @@ function AnswerMark({ left, delay, value, unit }: { left: number; delay: number;
 }
 
 const styles = StyleSheet.create({
-  wrap: { height: AXIS_Y + 58, marginHorizontal: 36, marginTop: 6 },
-  axis: { position: "absolute", left: -20, right: -20, top: AXIS_Y, height: 2, backgroundColor: colors.ink },
+  wrap: { marginHorizontal: 36, marginTop: 6 },
+  axis: { position: "absolute", left: -20, right: -20, height: 2, backgroundColor: colors.ink },
   pin: { position: "absolute", width: 100, alignItems: "center" },
   pinHeadRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   pinChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3, borderWidth: 1.5, borderColor: colors.ink },
@@ -153,7 +159,7 @@ const styles = StyleSheet.create({
   pinLabel: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.inkMuted, marginTop: 1 },
   pinStem: { width: 2, marginTop: 1 },
   pinHead: { width: 10, height: 10, borderRadius: 5, marginTop: -4, borderWidth: 2, borderColor: colors.ink },
-  answer: { position: "absolute", top: AXIS_Y - 6, width: 120, alignItems: "center" },
+  answer: { position: "absolute", width: 120, alignItems: "center" },
   answerDiamond: {
     width: 14,
     height: 14,

@@ -1,6 +1,10 @@
-export type PlayerId = "human" | "bot";
+/** Seat ids. A match uses the first N of them (2–4), in this order. */
+export type PlayerId = "p1" | "p2" | "p3" | "p4";
 
-export const PLAYERS: readonly PlayerId[] = ["human", "bot"];
+export const SEAT_IDS: readonly PlayerId[] = ["p1", "p2", "p3", "p4"];
+
+/** Per-player record that only holds the seats taking part in the match. */
+export type PerPlayer<T> = Partial<Record<PlayerId, T>>;
 
 export type BotLevel = "easy" | "normal" | "hard";
 
@@ -99,13 +103,23 @@ export type Opponent = {
   weak: Category[];
 };
 
+export type SeatKind = "human" | "bot";
+
+/** Who sits in a seat. Bot seats carry their opponent profile (level, strong/weak categories). */
+export type Seat = {
+  id: PlayerId;
+  kind: SeatKind;
+  name: string;
+  opponent?: Opponent;
+};
+
 export type MatchConfig = {
-  /** Total attack turns in the battle phase (shared, alternating). */
+  /** Total attack turns in the battle phase (shared, round-robin). Default: 4 per player. */
   battleTurns: number;
   mcqTimeMs: number;
   numericTimeMs: number;
-  botLevel: BotLevel;
-  opponent: Opponent;
+  /** 2–4 seats; their ids are exactly p1..pN. */
+  seats: Seat[];
   capitalShields: number;
   /** Probability that an expansion question is numeric ("closest wins"). */
   expansionNumericShare: number;
@@ -152,13 +166,15 @@ export type BattleInfo = {
 export type RevealAnswer = Answer & { correct: boolean; distance?: number };
 
 export type RevealOutcome =
-  | { type: "expansion"; picks: Record<PlayerId, number> }
+  /** Picks per player in the match (0 for those who got none). */
+  | { type: "expansion"; picks: PerPlayer<number> }
   | { type: "tiebreak-needed" }
   | { type: "captured"; battle: BattleInfo }
   | { type: "shield-down"; battle: BattleInfo; shieldsLeft: number }
-  | { type: "capital-fell"; battle: BattleInfo }
+  /** The defender is out. `final` = the match ends (one player left). */
+  | { type: "capital-fell"; battle: BattleInfo; final: boolean }
   | { type: "defended"; battle: BattleInfo }
-  | { type: "finale"; bets: Record<PlayerId, number>; deltas: Record<PlayerId, number> };
+  | { type: "finale"; bets: PerPlayer<number>; deltas: PerPlayer<number> };
 
 /** Something extra a player earned on this question. */
 export type RevealReward = { player: PlayerId; booster: BoosterType; reason: "streak" | "outpost" };
@@ -211,14 +227,18 @@ export type MatchEvent =
   | { type: "captured"; player: PlayerId; planet: PlanetId }
   | { type: "defended"; player: PlayerId; planet: PlanetId }
   | { type: "shield-down"; player: PlayerId; shieldsLeft: number }
-  | { type: "capital-fell"; player: PlayerId }
+  | { type: "capital-fell"; player: PlayerId; loser: PlayerId }
   | { type: "booster"; player: PlayerId; booster: BoosterType }
   | { type: "finale"; player: PlayerId; delta: number };
 
 export type MatchState = {
-  version: 4;
+  version: 5;
   map: StarMap;
   config: MatchConfig;
+  /** Seats in the match, in seat order (p1..pN). */
+  players: PlayerId[];
+  /** Players whose capital fell (3–4 player matches), in the order they dropped out. */
+  eliminated: PlayerId[];
   phase: GamePhase;
   /** Expansion: question number. Battle: 1-based attack turn. */
   round: number;
@@ -226,19 +246,20 @@ export type MatchState = {
   /** Question category of each planet (null for capitals: their questions are mixed). */
   sectors: Record<PlanetId, Category | null>;
   planetValue: Record<PlanetId, number>;
-  shields: Record<PlayerId, number>;
-  bonus: Record<PlayerId, number>;
-  boosters: Record<PlayerId, Boosters>;
-  streak: Record<PlayerId, number>;
-  tally: Record<PlayerId, PlayerTally>;
+  shields: PerPlayer<number>;
+  bonus: PerPlayer<number>;
+  boosters: PerPlayer<Boosters>;
+  streak: PerPlayer<number>;
+  tally: PerPlayer<PlayerTally>;
   events: MatchEvent[];
   battle: BattleInfo | null;
-  /** Bets placed for the final question, once both are in. */
-  finaleBets: Record<PlayerId, number> | null;
-  /** Who attacks on the next battle turn. */
+  /** Bets placed for the final question, once all are in. */
+  finaleBets: PerPlayer<number> | null;
+  /** Whose turn comes next in the battle rotation (seat order, skipping the eliminated). */
   nextAttacker: PlayerId;
   step: Step;
   usedQuestionIds: string[];
+  /** Winner: last player standing, or the top score after the finale ("draw" if it is shared). */
   winner: PlayerId | "draw" | null;
   endReason: "score" | "capital" | null;
 };

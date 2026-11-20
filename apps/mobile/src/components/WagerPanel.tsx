@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { formatNumber } from "../game/labels";
+import { liveOpponents, mainOpponent, mySeat, seatAvatarId, seatColor, seatName } from "../game/seats";
 import { colors } from "../theme/colors";
 import { fonts } from "../theme/type";
 import { haptics } from "../utils/haptics";
@@ -13,21 +14,22 @@ import { CategoryGlyph } from "./CategoryGlyph";
 import { Slab } from "./Slab";
 
 /**
- * "Ва-банк": the category is revealed, then each side bets up to half its score on one question.
- * Right answer adds the bet, wrong subtracts it.
+ * "Ва-банк": the category is revealed, then every player still in bets up to half their score
+ * on one question. Right answer adds the bet, wrong subtracts it.
  */
 export function WagerPanel({ state, onWager }: { state: MatchState; onWager: (n: number) => void }) {
   const insets = useSafeAreaInsets();
   const step = state.step;
-  const max = maxWager(state, "human");
+  const max = maxWager(state, mySeat);
   const scores = getScores(state);
   const [bet, setBet] = useState(Math.round(max / 2 / 50) * 50);
   if (step.type !== "wager") return null;
-  const placed = step.bets.human !== undefined;
-  const botPlaced = step.bets.bot !== undefined;
-  const opp = state.config.opponent;
-  const edge = opp.strong.includes(step.category) ? "сильная тема соперника" : opp.weak.includes(step.category) ? "слабая тема соперника" : null;
-  const lead = scores.human - scores.bot;
+  const placed = step.bets[mySeat] !== undefined;
+  const rivals = liveOpponents(state);
+  const opp = mainOpponent(state);
+  const edge = !opp ? null : opp.strong.includes(step.category) ? "сильная тема соперника" : opp.weak.includes(step.category) ? "слабая тема соперника" : null;
+  const best = Math.max(...rivals.map((p) => scores[p] ?? 0));
+  const lead = (scores[mySeat] ?? 0) - best;
   const options = [0, 0.25, 0.5, 0.75, 1].map((k) => Math.round((max * k) / 50) * 50);
 
   return (
@@ -58,7 +60,7 @@ export function WagerPanel({ state, onWager }: { state: MatchState; onWager: (n:
 
       <View style={styles.betBox}>
         <Text style={styles.betLabel}>Ваша ставка</Text>
-        <Text style={styles.betValue}>{formatNumber(placed ? step.bets.human! : bet)}</Text>
+        <Text style={styles.betValue}>{formatNumber(placed ? step.bets[mySeat]! : bet)}</Text>
         <Text style={styles.betMax}>максимум {formatNumber(max)} — половина ваших очков</Text>
         <View style={styles.options}>
           {options.map((v, i) => (
@@ -78,10 +80,14 @@ export function WagerPanel({ state, onWager }: { state: MatchState; onWager: (n:
       </View>
 
       <View style={{ flex: 1 }} />
-      <View style={styles.bot}>
-        <Avatar id={opp.id} size={32} ring={colors.bot} uid="wager" />
-        <Text style={styles.botText}>{botPlaced ? `${opp.name} сделал ставку` : `${opp.name} думает над ставкой…`}</Text>
-      </View>
+      {rivals.map((p) => (
+        <View key={p} style={styles.bot}>
+          <Avatar id={seatAvatarId(state, p)} size={32} ring={seatColor(state, p)} uid={`wager-${p}`} />
+          <Text style={styles.botText}>
+            {step.bets[p] !== undefined ? `${seatName(state, p)} сделал ставку` : `${seatName(state, p)} думает над ставкой…`}
+          </Text>
+        </View>
+      ))}
       <Button
         title={placed ? "Ставка принята" : "Поставить"}
         disabled={placed}

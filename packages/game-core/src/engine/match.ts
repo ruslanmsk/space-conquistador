@@ -1,5 +1,6 @@
 import { DEFAULT_OPPONENT } from "../bot/opponents";
-import { SOL_SYSTEM, getPlanet } from "../map/sol-system";
+import { mapForPlayers } from "../map/maps";
+import { getPlanet } from "../map/sol-system";
 import {
   availableCategories,
   displayedCorrectIndex,
@@ -21,6 +22,7 @@ import type {
   MatchConfig,
   MatchEvent,
   MatchState,
+  Opponent,
   PlayerId,
   PlayerTally,
   QuestionKind,
@@ -29,26 +31,44 @@ import type {
   Reveal,
   RevealAnswer,
   RevealReward,
+  Seat,
   Step,
 } from "../types";
+import { SEAT_IDS } from "../types";
 import {
   POINTS,
+  activePlayers,
   baseValue,
   freePlanets,
   getLegalAttackTargets,
   getLegalPicks,
   getScores,
   isCapital,
-  otherPlayer,
+  leaderOrDraw,
+  nextInSeatOrder,
   ownedPlanets,
+  perPlayer,
+  scoreOf,
 } from "./rules";
 
+/** Seats of a single-player game: you (p1) against a bot (p2). */
+export function botSeats(opponent: Opponent): Seat[] {
+  return [
+    { id: "p1", kind: "human", name: "Вы" },
+    { id: "p2", kind: "bot", name: opponent.name, opponent },
+  ];
+}
+
+/** Default battle length: 4 attack turns per player (8 for two). */
+export function defaultBattleTurns(players: number): number {
+  return 4 * players;
+}
+
 export const DEFAULT_CONFIG: MatchConfig = {
-  battleTurns: 8,
+  battleTurns: defaultBattleTurns(2),
   mcqTimeMs: 15_000,
   numericTimeMs: 20_000,
-  botLevel: DEFAULT_OPPONENT.level,
-  opponent: DEFAULT_OPPONENT,
+  seats: botSeats(DEFAULT_OPPONENT),
   capitalShields: 3,
   expansionNumericShare: 0.35,
   finaleMaxShare: 0.5,
@@ -56,7 +76,6 @@ export const DEFAULT_CONFIG: MatchConfig = {
 };
 
 const BOOSTER_TYPES: BoosterType[] = ["fifty", "range"];
-const PLAYER_IDS: PlayerId[] = ["human", "bot"];
 
 const emptyTally = (): PlayerTally => ({
   answered: 0,
@@ -67,48 +86,74 @@ const emptyTally = (): PlayerTally => ({
   defended: 0,
 });
 
-/** Creates a match that is already in the first expansion question. */
+/** Checks seats: 2–4 of them, ids exactly p1..pN. Returns them in seat order. */
+function validateSeats(seats: Seat[]): Seat[] {
+  const n = seats.length;
+  if (n < 2 || n > 4) throw new Error(`A match needs 2–4 seats, got ${n}`);
+  const sorted = [...seats].sort((a, b) => SEAT_IDS.indexOf(a.id) - SEAT_IDS.indexOf(b.id));
+  sorted.forEach((s, i) => {
+    if (s.id !== SEAT_IDS[i]) throw new Error(`Seats must be p1..p${n}, got ${seats.map((x) => x.id).join(",")}`);
+  });
+  return sorted;
+}
+
+/**
+ * Creates a match that is already in the first expansion question. The map is chosen by the
+ * number of seats; `battleTurns` defaults to 4 per player.
+ */
 export function createMatch(ctx: GameContext, config: Partial<MatchConfig> = {}): MatchState {
-  const map = SOL_SYSTEM;
+  const seats = validateSeats(config.seats ?? DEFAULT_CONFIG.seats);
+  const players = seats.map((s) => s.id);
+  const map = mapForPlayers(players.length);
   const owners: MatchState["owners"] = {};
   const planetValue: MatchState["planetValue"] = {};
   for (const p of map.planets) {
     owners[p.id] = p.capitalOf ?? null;
     planetValue[p.id] = p.capitalOf ? POINTS.capital : 0;
   }
-  const opponent = config.opponent ?? DEFAULT_CONFIG.opponent;
   const cfg: MatchConfig = {
     ...DEFAULT_CONFIG,
-    botLevel: opponent.level,
+    battleTurns: defaultBattleTurns(players.length),
     ...config,
-    opponent,
+    seats,
   };
 
   const sectors = assignSectors(map.planets, ctx);
   const state: MatchState = {
-    version: 4,
+    version: 5,
     map,
     config: cfg,
+    players,
+    eliminated: [],
     phase: "expansion",
     round: 0,
     owners,
     sectors,
     planetValue,
-    shields: { human: cfg.capitalShields, bot: cfg.capitalShields },
-    bonus: { human: 0, bot: 0 },
-    boosters: { human: { fifty: 1, range: 1 }, bot: { fifty: 1, range: 1 } },
-    streak: { human: 0, bot: 0 },
-    tally: { human: emptyTally(), bot: emptyTally() },
+    shields: perPlayer(players, () => cfg.capitalShields),
+    bonus: perPlayer(players, () => 0),
+    boosters: perPlayer(players, () => ({ fifty: 1, range: 1 })),
+    streak: perPlayer(players, () => 0),
+    tally: perPlayer(players, emptyTally),
     events: [],
     battle: null,
     finaleBets: null,
-    nextAttacker: "human",
+    nextAttacker: players[0]!,
     step: { type: "finished" },
     usedQuestionIds: [],
     winner: null,
     endReason: null,
   };
   return startExpansionQuestion(state, ctx);
+}
+
+/** Single-player game: you (p1, human) against `opponent` (p2, bot) on the Sol map. */
+export function createBotMatch(
+  ctx: GameContext,
+  opponent: Opponent,
+  config: Partial<Omit<MatchConfig, "seats">> = {},
+): MatchState {
+  return createMatch(ctx, { ...config, seats: botSeats(opponent) });
 }
 
 /** Minimum unused MCQ questions a category needs to become a sector. */
@@ -165,7 +210,7 @@ export function playersToAct(state: MatchState): PlayerId[] {
     case "attack":
       return [step.player];
     case "wager":
-      return PLAYER_IDS.filter((p) => step.bets[p] === undefined);
+      return activePlayers(state).filter((p) => step.bets[p] === undefined);
     default:
       return [];
   }
@@ -179,7 +224,7 @@ export function usableBoosters(state: MatchState, player: PlayerId): BoosterType
   if (!q.participants.includes(player) || q.answers[player]) return [];
   const aid = q.aids[player];
   const wanted: BoosterType = q.question.type === "mcq" ? "fifty" : "range";
-  if (state.boosters[player][wanted] <= 0) return [];
+  if ((state.boosters[player]?.[wanted] ?? 0) <= 0) return [];
   if (wanted === "fifty" && aid?.hidden) return [];
   if (wanted === "range" && aid?.range) return [];
   return [wanted];
@@ -216,7 +261,7 @@ function askQuestion(
 function startExpansionQuestion(state: MatchState, ctx: GameContext): MatchState {
   if (freePlanets(state).length === 0) return startBattle(state, ctx);
   const type: QuestionType = ctx.rng() < state.config.expansionNumericShare ? "numeric" : "mcq";
-  return askQuestion({ ...state, round: state.round + 1 }, ctx, "expansion", ["human", "bot"], type);
+  return askQuestion({ ...state, round: state.round + 1 }, ctx, "expansion", activePlayers(state), type);
 }
 
 function normalizeAnswer(
@@ -244,12 +289,10 @@ function onBoost(state: MatchState, player: PlayerId, booster: BoosterType, ctx:
   const aid = { ...step.q.aids[player] };
   if (booster === "fifty") aid.hidden = fiftyFifty(record, step.q, ctx.rng);
   else aid.range = rangeHint(record, ctx.rng);
+  const own = state.boosters[player]!;
   return {
     ...state,
-    boosters: {
-      ...state.boosters,
-      [player]: { ...state.boosters[player], [booster]: state.boosters[player][booster] - 1 },
-    },
+    boosters: { ...state.boosters, [player]: { ...own, [booster]: own[booster] - 1 } },
     step: { type: "question", q: { ...step.q, aids: { ...step.q.aids, [player]: aid } } },
   };
 }
@@ -306,16 +349,18 @@ function scoreAnswers(
   const events: MatchEvent[] = [];
   for (const p of aq.participants) {
     const a = answers[p]!;
-    const t = { ...tally[p] };
+    const t = { ...tally[p]! };
     t.answered++;
     if (good.has(p)) {
       t.correct++;
       t.correctMs += a.elapsedMs;
-      streak[p] = streak[p] + 1;
-      t.bestStreak = Math.max(t.bestStreak, streak[p]);
-      if (streak[p] % state.config.streakForBooster === 0) {
+      const run = (streak[p] ?? 0) + 1;
+      streak[p] = run;
+      t.bestStreak = Math.max(t.bestStreak, run);
+      if (run % state.config.streakForBooster === 0) {
         const booster = pickRandom(ctx.rng, BOOSTER_TYPES)!;
-        boosters[p] = { ...boosters[p], [booster]: boosters[p][booster] + 1 };
+        const own = boosters[p]!;
+        boosters[p] = { ...own, [booster]: own[booster] + 1 };
         rewards.push({ player: p, booster, reason: "streak" });
         events.push({ type: "booster", player: p, booster });
       }
@@ -367,16 +412,14 @@ function resolveQuestion(
   };
 
   if (aq.kind === "expansion") {
+    // 1st place takes 2 planets, 2nd place 1, the rest none; picks are made in ranking order.
     const free = freePlanets(state).length;
     const queue: PlayerId[] = [];
     ranked.forEach((p, place) => {
       const n = place === 0 ? 2 : place === 1 ? 1 : 0;
       for (let i = 0; i < n && queue.length < free; i++) queue.push(p);
     });
-    const picks = {
-      human: queue.filter((p) => p === "human").length,
-      bot: queue.filter((p) => p === "bot").length,
-    };
+    const picks = perPlayer(aq.participants, (p) => queue.filter((x) => x === p).length);
     const reveal: Reveal = {
       ...base,
       winner: ranked[0] ?? null,
@@ -423,13 +466,11 @@ function grantOutpostBooster(
 ): { state: MatchState; reward?: RevealReward } {
   if (getPlanet(state.map, planet).kind !== "outpost") return { state };
   const booster = pickRandom(ctx.rng, BOOSTER_TYPES)!;
+  const own = state.boosters[player]!;
   return {
     state: {
       ...state,
-      boosters: {
-        ...state.boosters,
-        [player]: { ...state.boosters[player], [booster]: state.boosters[player][booster] + 1 },
-      },
+      boosters: { ...state.boosters, [player]: { ...own, [booster]: own[booster] + 1 } },
       events: [...state.events, { type: "booster", player, booster }],
     },
     reward: { player, booster, reason: "outpost" },
@@ -437,7 +478,8 @@ function grantOutpostBooster(
 }
 
 function bumpTally(state: MatchState, player: PlayerId, key: "captured" | "defended"): MatchState["tally"] {
-  return { ...state.tally, [player]: { ...state.tally[player], [key]: state.tally[player][key] + 1 } };
+  const t = state.tally[player]!;
+  return { ...state.tally, [player]: { ...t, [key]: t[key] + 1 } };
 }
 
 function applyBattleResult(
@@ -451,7 +493,7 @@ function applyBattleResult(
     const reveal: Reveal = { ...base, winner: battle.defender, outcome: { type: "defended", battle } };
     return {
       ...state,
-      bonus: { ...state.bonus, [battle.defender]: state.bonus[battle.defender] + POINTS.defense },
+      bonus: { ...state.bonus, [battle.defender]: (state.bonus[battle.defender] ?? 0) + POINTS.defense },
       tally: bumpTally(state, battle.defender, "defended"),
       events: [...state.events, { type: "defended", player: battle.defender, planet: battle.target }],
       step: { type: "reveal", reveal, next: { type: "next-battle-turn" } },
@@ -459,7 +501,7 @@ function applyBattleResult(
   }
 
   if (isCapital(state, battle.target)) {
-    const shieldsLeft = state.shields[battle.defender] - 1;
+    const shieldsLeft = (state.shields[battle.defender] ?? 0) - 1;
     const shields = { ...state.shields, [battle.defender]: shieldsLeft };
     if (shieldsLeft > 0) {
       const reveal: Reveal = {
@@ -474,16 +516,24 @@ function applyBattleResult(
         step: { type: "reveal", reveal, next: { type: "next-battle-turn" } },
       };
     }
+    // The defender is out: all its planets go to the attacker. With one player left, it wins.
     const owners = { ...state.owners };
     for (const id of ownedPlanets(state, battle.defender)) owners[id] = battle.attacker;
-    const reveal: Reveal = { ...base, winner: battle.attacker, outcome: { type: "capital-fell", battle } };
-    return {
+    const eliminated = [...state.eliminated, battle.defender];
+    const final = state.players.length - eliminated.length <= 1;
+    const reveal: Reveal = { ...base, winner: battle.attacker, outcome: { type: "capital-fell", battle, final } };
+    const fallen: MatchState = {
       ...state,
       shields,
       owners,
+      eliminated,
+      events: [...state.events, { type: "capital-fell", player: battle.attacker, loser: battle.defender }],
+    };
+    if (!final) return { ...fallen, step: { type: "reveal", reveal, next: { type: "next-battle-turn" } } };
+    return {
+      ...fallen,
       winner: battle.attacker,
       endReason: "capital",
-      events: [...state.events, { type: "capital-fell", player: battle.attacker }],
       step: { type: "reveal", reveal, next: { type: "finished" } },
     };
   }
@@ -548,32 +598,38 @@ function onPick(state: MatchState, player: PlayerId, planet: string, ctx: GameCo
   return { ...next, step: { type: "pick", queue } };
 }
 
-function startBattle(state: MatchState, _ctx: GameContext): MatchState {
+function startBattle(state: MatchState, ctx: GameContext): MatchState {
   const scores = getScores(state);
-  // The trailing player attacks first; on a tie the human starts.
-  const first: PlayerId = scores.bot < scores.human ? "bot" : "human";
-  return advanceBattle({ ...state, phase: "battle", round: 0, battle: null, nextAttacker: first }, _ctx);
+  // The trailing player attacks first (on a tie, the earlier seat); then round-robin in seat order.
+  let first = state.players[0]!;
+  for (const p of activePlayers(state)) if ((scores[p] ?? 0) < (scores[first] ?? 0)) first = p;
+  return advanceBattle({ ...state, phase: "battle", round: 0, battle: null, nextAttacker: first }, ctx);
 }
 
+/**
+ * Next attack turn: the next player in rotation who is still in the match and has a target.
+ * Skipped players do not use up a turn. After `battleTurns` turns comes the finale.
+ */
 function advanceBattle(state: MatchState, ctx: GameContext): MatchState {
-  let s: MatchState = { ...state, battle: null };
-  for (let skipped = 0; skipped < 2; skipped++) {
-    s = { ...s, round: s.round + 1 };
-    if (s.round > s.config.battleTurns) break;
-    const attacker = s.nextAttacker;
-    s = { ...s, nextAttacker: otherPlayer(attacker) };
-    if (getLegalAttackTargets(s, attacker).length > 0) {
-      return { ...s, step: { type: "attack", player: attacker } };
-    }
+  const s: MatchState = { ...state, battle: null };
+  let candidate = s.nextAttacker;
+  for (let i = 0; i < s.players.length; i++) {
+    const attacker = candidate;
+    candidate = nextInSeatOrder(s, attacker);
+    if (s.eliminated.includes(attacker) || getLegalAttackTargets(s, attacker).length === 0) continue;
+    const round = s.round + 1;
+    if (round > s.config.battleTurns) return startFinale({ ...s, round }, ctx);
+    return { ...s, round, nextAttacker: candidate, step: { type: "attack", player: attacker } };
   }
   return startFinale(s, ctx);
 }
 
 // ---------------------------------------------------------------------------
-// Finale: "Ва-банк" — the category is revealed, both bet up to half their score, one question.
+// Finale: "Ва-банк" — the category is revealed, everyone still in bets up to half their score,
+// one question for all.
 
 export function maxWager(state: MatchState, player: PlayerId): number {
-  const score = getScores(state)[player];
+  const score = scoreOf(state, player);
   return Math.max(0, Math.floor((score * state.config.finaleMaxShare) / 50) * 50);
 }
 
@@ -593,19 +649,14 @@ function onWager(state: MatchState, player: PlayerId, amount: number, ctx: GameC
   const step = state.step;
   if (step.type !== "wager" || step.bets[player] !== undefined) return state;
   const bet = Math.max(0, Math.min(maxWager(state, player), Math.round(amount)));
+  if (state.eliminated.includes(player) || !state.players.includes(player)) return state;
   const bets = { ...step.bets, [player]: bet };
-  if (PLAYER_IDS.some((p) => bets[p] === undefined)) {
+  const players = activePlayers(state);
+  if (players.some((p) => bets[p] === undefined)) {
     return { ...state, step: { ...step, bets } };
   }
-  const asked = askQuestion(
-    { ...state, step: { ...step, bets } },
-    ctx,
-    "finale",
-    PLAYER_IDS,
-    "mcq",
-    step.category,
-  );
-  return { ...asked, finaleBets: bets as Record<PlayerId, number> };
+  const asked = askQuestion({ ...state, step: { ...step, bets } }, ctx, "finale", players, "mcq", step.category);
+  return { ...asked, finaleBets: bets };
 }
 
 function resolveFinale(
@@ -613,19 +664,17 @@ function resolveFinale(
   base: Omit<Reveal, "winner" | "outcome">,
   answers: Partial<Record<PlayerId, RevealAnswer>>,
 ): MatchState {
-  const bets = state.finaleBets ?? { human: 0, bot: 0 };
-  const deltas = { human: 0, bot: 0 } as Record<PlayerId, number>;
+  const players = Object.keys(answers) as PlayerId[];
+  const bets = perPlayer(players, (p) => state.finaleBets?.[p] ?? 0);
+  const deltas = perPlayer(players, (p) => (answers[p]?.correct ? bets[p]! : -bets[p]!));
   const bonus = { ...state.bonus };
   const events: MatchEvent[] = [];
-  for (const p of PLAYER_IDS) {
-    deltas[p] = answers[p]?.correct ? bets[p] : -bets[p];
-    bonus[p] += deltas[p];
-    if (bets[p]) events.push({ type: "finale", player: p, delta: deltas[p] });
+  for (const p of players) {
+    bonus[p] = (bonus[p] ?? 0) + deltas[p]!;
+    if (bets[p]) events.push({ type: "finale", player: p, delta: deltas[p]! });
   }
   const scored: MatchState = { ...state, bonus, events: [...state.events, ...events] };
-  const scores = getScores(scored);
-  const winner: PlayerId | "draw" =
-    scores.human === scores.bot ? "draw" : scores.human > scores.bot ? "human" : "bot";
+  const winner = leaderOrDraw(scored);
   const reveal: Reveal = {
     ...base,
     winner: winner === "draw" ? null : winner,
@@ -640,9 +689,7 @@ function resolveFinale(
 }
 
 function finishByScore(s: MatchState): MatchState {
-  const scores = getScores(s);
-  const winner = scores.human === scores.bot ? "draw" : scores.human > scores.bot ? "human" : "bot";
-  return finish(s, winner, "score");
+  return finish(s, leaderOrDraw(s), "score");
 }
 
 function onAttack(state: MatchState, player: PlayerId, target: string, ctx: GameContext): MatchState {

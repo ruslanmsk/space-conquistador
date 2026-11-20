@@ -13,6 +13,7 @@ import { Screen } from "../src/components/Screen";
 import { StarMap } from "../src/components/StarMap";
 import { WagerPanel } from "../src/components/WagerPanel";
 import { stepHint } from "../src/game/labels";
+import { mainOpponent, mySeat, seatAvatarId, seatColor } from "../src/game/seats";
 import { useProgressData } from "../src/hooks/useProgressData";
 import { useMatchStore } from "../src/store/matchStore";
 import { colors } from "../src/theme/colors";
@@ -40,15 +41,15 @@ export default function MatchScreen() {
 
   const step = match?.step;
   const selectKind =
-    step?.type === "pick" && step.queue[0] === "human"
+    step?.type === "pick" && step.queue[0] === mySeat
       ? "pick"
-      : step?.type === "attack" && step.player === "human"
+      : step?.type === "attack" && step.player === mySeat
         ? "attack"
         : null;
 
   const selectable = useMemo(() => {
     if (!match || !selectKind) return [];
-    return selectKind === "pick" ? getLegalPicks(match, "human") : getLegalAttackTargets(match, "human");
+    return selectKind === "pick" ? getLegalPicks(match, mySeat) : getLegalAttackTargets(match, mySeat);
   }, [match, selectKind]);
 
   // Close the inspector whenever the turn moves on.
@@ -93,8 +94,9 @@ export default function MatchScreen() {
   };
 
   const hint = stepHint(match);
-  const oppIndex = OPPONENTS.findIndex((o) => o.id === match.config.opponent.id);
-  const nextOpp = OPPONENTS[oppIndex + 1];
+  const opponent = mainOpponent(match);
+  const oppIndex = OPPONENTS.findIndex((o) => o.id === opponent?.id);
+  const nextOpp = oppIndex >= 0 ? OPPONENTS[oppIndex + 1] : undefined;
 
   return (
     <Screen>
@@ -125,8 +127,12 @@ export default function MatchScreen() {
             onClose={() => setInspected(null)}
           />
         ) : hint.text ? (
-          <Animated.View key={hint.text} entering={FadeInDown.duration(200)} style={[styles.hint, hint.tone === "bot" && styles.hintBot]}>
-            {hint.tone === "bot" && <Avatar id={match.config.opponent.id} size={28} ring={colors.bot} uid="hint" />}
+          <Animated.View
+            key={hint.text}
+            entering={FadeInDown.duration(200)}
+            style={[styles.hint, hint.seat && { borderColor: seatColor(match, hint.seat) }]}
+          >
+            {hint.seat && <Avatar id={seatAvatarId(match, hint.seat)} size={28} ring={seatColor(match, hint.seat)} uid="hint" />}
             <Text style={styles.hintText}>{hint.text}</Text>
           </Animated.View>
         ) : null}
@@ -151,7 +157,7 @@ export default function MatchScreen() {
       {step.type === "finished" && (
         <ResultPanel
           state={match}
-          onRematch={() => newMatch(match.config.opponent)}
+          onRematch={() => opponent && newMatch(opponent)}
           onNext={nextOpp ? () => newMatch(nextOpp) : null}
           onMenu={() => {
             abandon();
@@ -180,6 +186,5 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  hintBot: { borderColor: colors.bot },
   hintText: { flex: 1, fontFamily: fonts.bodySemi, color: colors.text, fontSize: 14, lineHeight: 19 },
 });

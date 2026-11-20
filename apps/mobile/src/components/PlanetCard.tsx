@@ -1,10 +1,11 @@
-import { KIND_VALUE, getPlanet, type MatchState, type PlanetId } from "@space-conquistador/game-core";
+import { KIND_VALUE, getPlanet, isCapital, seatOpponent, type MatchState, type PlanetId } from "@space-conquistador/game-core";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { KIND_HINTS, KIND_LABELS } from "../game/labels";
 import { categoryRate } from "../hooks/useProgressData";
 import type { Progress } from "../storage/progress";
-import { colors, playerColor } from "../theme/colors";
+import { isMe, mainOpponent, seatColor, seatName } from "../game/seats";
+import { colors } from "../theme/colors";
 import { fonts } from "../theme/type";
 import { Button } from "./Button";
 import { CategoryGlyph } from "./CategoryGlyph";
@@ -14,7 +15,7 @@ import { Slab } from "./Slab";
 type Props = {
   state: MatchState;
   planet: PlanetId;
-  /** "pick" / "attack" when the human may act on this planet now. */
+  /** "pick" / "attack" when the local player may act on this planet now. */
   action: "pick" | "attack" | null;
   progress: Progress | null;
   onAction: () => void;
@@ -27,23 +28,31 @@ export function PlanetCard({ state, planet, action, progress, onAction, onClose 
   const owner = state.owners[planet];
   const sector = state.sectors[planet];
   const value = owner ? state.planetValue[planet] : KIND_VALUE[p.kind];
-  const opp = state.config.opponent;
-  const oppEdge = sector ? (opp.strong.includes(sector) ? "сильная тема соперника" : opp.weak.includes(sector) ? "слабая тема соперника" : null) : null;
+  // Knowledge edge of the bot that holds the planet (or of the main bot opponent if it is not theirs).
+  const opp = (owner && !isMe(owner) ? seatOpponent(state, owner) : undefined) ?? mainOpponent(state);
+  const oppEdge =
+    sector && opp ? (opp.strong.includes(sector) ? "сильная тема соперника" : opp.weak.includes(sector) ? "слабая тема соперника" : null) : null;
   const myRate = sector && progress ? categoryRate(progress, sector) : null;
-  const ownerText = owner === "human" ? "Ваша" : owner === "bot" ? opp.name : "Свободна";
+  const ownerText = !owner ? "Свободна" : isMe(owner) ? "Ваша" : seatName(state, owner);
+  const standingCapital = isCapital(state, planet);
+  const capitalHint = state.players.length > 2 ? "3 щита. Падение столицы — игрок выбывает" : KIND_HINTS.capital;
 
   return (
     <Animated.View entering={FadeInDown.duration(200)}>
-      <Slab color={colors.raised} shadow={colors.bgDeep} border={owner ? playerColor(owner) : colors.lineHi} depth={4}>
+      <Slab color={colors.raised} shadow={colors.bgDeep} border={owner ? seatColor(state, owner) : colors.lineHi} depth={4}>
         <View style={styles.row}>
           <PlanetIcon id={planet} size={56} uid="card" />
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>{p.name}</Text>
             <Text style={styles.kind}>
-              {KIND_LABELS[p.kind]} · {value} очк. · <Text style={{ color: owner ? playerColor(owner) : colors.muted }}>{ownerText}</Text>
+              {KIND_LABELS[p.kind]} · {value} очк. · <Text style={{ color: owner ? seatColor(state, owner) : colors.muted }}>{ownerText}</Text>
             </Text>
             <Text style={styles.hint}>
-              {p.capitalOf ? `${KIND_HINTS.capital}. Щитов: ${state.shields[p.capitalOf]}` : KIND_HINTS[p.kind]}
+              {standingCapital && p.capitalOf
+                ? `${capitalHint}. Щитов: ${state.shields[p.capitalOf] ?? 0}`
+                : p.capitalOf
+                  ? `Бывшая столица — ${seatName(state, p.capitalOf)} выбыл`
+                  : KIND_HINTS[p.kind]}
             </Text>
           </View>
           <Text style={styles.close} onPress={onClose} accessibilityRole="button" accessibilityLabel="Закрыть">
@@ -71,7 +80,7 @@ export function PlanetCard({ state, planet, action, progress, onAction, onClose 
         )}
         {action && (
           <View style={{ padding: 12, paddingTop: 4 }}>
-            <Button title={action === "pick" ? "Занять" : p.capitalOf ? "Штурмовать столицу" : "Атаковать"} onPress={onAction} />
+            <Button title={action === "pick" ? "Занять" : standingCapital ? "Штурмовать столицу" : "Атаковать"} onPress={onAction} />
           </View>
         )}
       </Slab>

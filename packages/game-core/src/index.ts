@@ -1,10 +1,14 @@
 export * from "./types";
 export { SOL_SYSTEM, getPlanet, capitalOf } from "./map/sol-system";
+export { TRIAD_SYSTEM, QUAD_SYSTEM, MAPS, mapForPlayers } from "./map/maps";
 export { toPublicQuestion, drawQuestion, evaluateAnswer, availableCategories } from "./questions";
 export { seededRng } from "./rng";
 export {
   DEFAULT_CONFIG,
+  botSeats,
+  createBotMatch,
   createMatch,
+  defaultBattleTurns,
   dispatch,
   restartQuestion,
   playersToAct,
@@ -14,13 +18,20 @@ export {
 export {
   POINTS,
   KIND_VALUE,
+  activePlayers,
   baseValue,
-  otherPlayer,
+  getSeat,
+  seatOpponent,
+  opponentsOf,
+  nextInSeatOrder,
   ownedPlanets,
   freePlanets,
   getLegalPicks,
   getLegalAttackTargets,
   getScores,
+  scoreOf,
+  getRanking,
+  leaderOrDraw,
   isCapital,
 } from "./engine/rules";
 export {

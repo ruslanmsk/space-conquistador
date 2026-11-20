@@ -57,6 +57,18 @@ const LOOKS: Record<string, PlanetLook> = {
     r: 6.2,
     style: { kind: "banded", bands: ["#EDCB9C", "#B26F42", "#EDCB9C"], spot: "#B4482C" },
   },
+  // 3–4 player maps
+  titan: {
+    base: "#D99A4E",
+    shade: "#7A4A1E",
+    r: 7,
+    style: { kind: "banded", bands: ["#E9B872", "#C07D36"] },
+  },
+  ganymede: { base: "#8F8A9C", shade: "#45414F", r: 7, style: { kind: "lined", line: "#C9C2B0" } },
+  io: { base: "#E3CC5C", shade: "#7F6A22", r: 3.8, style: { kind: "cratered", crater: "#C4722F" } },
+  phobos: { base: "#9A7E6A", shade: "#4C3D33", r: 3.6, style: { kind: "cratered", crater: "#7A6252" } },
+  callisto: { base: "#6F665C", shade: "#36312B", r: 4.3, style: { kind: "cratered", crater: "#A89C8A" } },
+  eris: { base: "#D9D6CE", shade: "#6F6C66", r: 4.3, style: { kind: "lined", line: "#A9A399" } },
 };
 
 const FALLBACK: PlanetLook = {

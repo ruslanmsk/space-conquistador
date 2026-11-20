@@ -1,19 +1,20 @@
-import { KIND_VALUE, type MatchState, type PlanetId } from "@space-conquistador/game-core";
+import { KIND_VALUE, isCapital, type MatchState, type PlanetId } from "@space-conquistador/game-core";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import Svg, { Circle, Defs, G, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import { useProgress } from "../hooks/useProgress";
-import { colors, playerColor, svgFont } from "../theme/colors";
+import { isMe, seatColor, seatDash, seatInk } from "../game/seats";
+import { colors, svgFont } from "../theme/colors";
 import { planetLook } from "../theme/planets";
 import { CategoryGlyphG } from "./CategoryGlyph";
 import { HalftoneDefs, PlanetArt } from "./PlanetArt";
 
 type Props = {
   state: MatchState;
-  /** Planets the human can act on right now. */
+  /** Planets the local player can act on right now. */
   selectable: PlanetId[];
   selectKind: "pick" | "attack" | null;
-  /** Planet the human tapped and is about to confirm. */
+  /** Planet the local player tapped and is about to confirm. */
   selected?: PlanetId | null;
   onTap: (id: PlanetId) => void;
   /** Planet under attack right now. */
@@ -117,6 +118,8 @@ export const StarMap = memo(function StarMap({
   const svgW = vbW * scale;
   const svgH = vbH * scale;
   const selColor = selectKind === "attack" ? colors.human : colors.gold;
+  const cx = map.width / 2;
+  const cy = map.height / 2;
 
   return (
     <View style={styles.wrap} onLayout={onLayout}>
@@ -128,9 +131,9 @@ export const StarMap = memo(function StarMap({
 
           {/* star-chart frame: faint orbits around the centre */}
           <G stroke={colors.line} strokeWidth={0.25} fill="none" opacity={0.7}>
-            <Circle cx={50} cy={70} r={22} strokeDasharray="0.6 1.4" />
-            <Circle cx={50} cy={70} r={42} strokeDasharray="0.6 1.4" />
-            <Circle cx={50} cy={70} r={62} strokeDasharray="0.6 1.4" />
+            <Circle cx={cx} cy={cy} r={22} strokeDasharray="0.6 1.4" />
+            <Circle cx={cx} cy={cy} r={42} strokeDasharray="0.6 1.4" />
+            <Circle cx={cx} cy={cy} r={62} strokeDasharray="0.6 1.4" />
           </G>
 
           {/* hyperlanes */}
@@ -147,7 +150,7 @@ export const StarMap = memo(function StarMap({
                     y1={p.y}
                     x2={q.x}
                     y2={q.y}
-                    stroke={same ? playerColor(owners[p.id]) : colors.lineHi}
+                    stroke={same ? seatColor(state, owners[p.id]) : colors.lineHi}
                     strokeOpacity={same ? 0.85 : 0.7}
                     strokeWidth={same ? 0.8 : 0.35}
                     strokeDasharray={same ? undefined : "0.8 1"}
@@ -159,7 +162,7 @@ export const StarMap = memo(function StarMap({
           {map.planets.map((p) => {
             const look = planetLook(p.id);
             const owner = owners[p.id];
-            const oc = playerColor(owner);
+            const oc = seatColor(state, owner);
             const ringR = look.r + 1.5;
             const isSel = selectableSet.has(p.id);
             const isPicked = selected === p.id;
@@ -177,8 +180,8 @@ export const StarMap = memo(function StarMap({
                     cy={p.y}
                     r={ringR}
                     stroke={oc}
-                    strokeWidth={owner === "bot" ? 1.1 : 1.3}
-                    strokeDasharray={owner === "bot" ? "2 0.8" : undefined}
+                    strokeWidth={isMe(owner) ? 1.3 : 1.1}
+                    strokeDasharray={seatDash(state, owner)}
                     fill="none"
                   />
                 ) : (
@@ -188,12 +191,12 @@ export const StarMap = memo(function StarMap({
                 {isPicked && <Circle cx={p.x} cy={p.y} r={ringR + 1.4} stroke={colors.gold} strokeWidth={1.1} fill="none" />}
                 {battleTarget === p.id && <TargetMark x={p.x} y={p.y} r={ringR} color={colors.gold} />}
 
-                {p.capitalOf && (
+                {p.capitalOf && isCapital(state, p.id) && (
                   <Shields
                     x={p.x}
                     y={p.y - look.r - 3.6}
                     total={state.config.capitalShields}
-                    left={state.shields[p.capitalOf]}
+                    left={state.shields[p.capitalOf] ?? 0}
                     color={colors.gold}
                   />
                 )}
@@ -219,7 +222,7 @@ export const StarMap = memo(function StarMap({
                 <SvgText
                   x={p.x}
                   y={ly + 0.25}
-                  fill={owner ? (owner === "human" ? colors.humanInk : colors.botInk) : colors.muted}
+                  fill={owner ? seatInk(state, owner) : colors.muted}
                   fontSize={2.4}
                   fontWeight="700"
                   fontFamily={svgFont}
@@ -250,7 +253,7 @@ export const StarMap = memo(function StarMap({
                 x={p.x}
                 y={p.y}
                 r={planetLook(p.id).r}
-                color={playerColor(owners[p.id])}
+                color={seatColor(state, owners[p.id])}
                 onDone={() => setFlashes((all) => all.filter((x) => x.key !== f.key))}
               />
             );

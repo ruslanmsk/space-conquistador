@@ -3,7 +3,8 @@ import { Platform } from "react-native";
 /**
  * "Космоплакат": a 1960s print-poster look. Deep ink map, cream paper cards, vermilion (you)
  * vs cobalt (opponent) — distinguishable for colour-blind players, and always paired with a
- * second cue (pattern or glyph). Gold means "correct". No glass, no gradients in UI chrome.
+ * second cue (pattern or glyph). Jade and plum are the 3rd/4th seats. Gold means "correct".
+ * No glass, no gradients in UI chrome. Seat → colour mapping lives in `game/seats.ts`.
  */
 export const colors = {
   bg: "#121829",
@@ -30,6 +31,16 @@ export const colors = {
   botDeep: "#1B4D80",
   botInk: "#F0F7FF",
   botSoft: "rgba(61, 143, 217, 0.16)",
+  // 3rd and 4th seats (3–4 player matches): bluish green and reddish purple from the
+  // Okabe–Ito colour-blind-safe set, toned to the poster inks.
+  jade: "#2FA37F",
+  jadeDeep: "#165A47",
+  jadeInk: "#EFFFF8",
+  jadeSoft: "rgba(47, 163, 127, 0.16)",
+  plum: "#C86AA8",
+  plumDeep: "#6E2E5C",
+  plumInk: "#FFF2FA",
+  plumSoft: "rgba(200, 106, 168, 0.16)",
   neutral: "#56618A",
   gold: "#F4B63F",
   goldDeep: "#A8741A",
@@ -48,20 +59,6 @@ export const colors = {
   success: "#F4B63F",
   danger: "#E8552D",
 };
-
-export type PlayerKey = "human" | "bot";
-
-export const playerColor = (p: PlayerKey | null | undefined) =>
-  p === "human" ? colors.human : p === "bot" ? colors.bot : colors.neutral;
-
-export const playerDeep = (p: PlayerKey | null | undefined) =>
-  p === "human" ? colors.humanDeep : p === "bot" ? colors.botDeep : colors.line;
-
-export const playerInk = (p: PlayerKey | null | undefined) =>
-  p === "human" ? colors.humanInk : p === "bot" ? colors.botInk : colors.text;
-
-export const playerSoft = (p: PlayerKey | null | undefined) =>
-  p === "human" ? colors.humanSoft : p === "bot" ? colors.botSoft : "transparent";
 
 /** Font family for SVG text on web (RN-web otherwise falls back to a serif font inside <svg>). */
 export const svgFont = Platform.select({

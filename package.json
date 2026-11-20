@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "start": "npm run dev --workspace=@space-conquistador/mobile",
-    "web": "npm run web --workspace=@space-conquistador/mobile",
+    "web": "node scripts/web.mjs",
     "android": "npm run android --workspace=@space-conquistador/mobile",
     "ios": "npm run ios --workspace=@space-conquistador/mobile",
     "typecheck": "turbo typecheck",

@@ -21,7 +21,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BOOSTER_LABELS, formatNumber, formatSeconds, planetName, revealTitle } from "../game/labels";
 import { useCountdown } from "../hooks/useCountdown";
-import { colors, playerColor } from "../theme/colors";
+import { colors, playerColor, playerDeep } from "../theme/colors";
 import { fonts } from "../theme/type";
 import { haptics } from "../utils/haptics";
 import { sound } from "../utils/sound";
@@ -195,9 +195,15 @@ function Choice({
   }, [wrongMine, shake]);
   const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shake.value }] }));
 
-  const dim = (locked && !mine && !revealing) || (revealing && stage >= 2 && !correct && !mine) || hidden;
+  const theirsShown = theirs && revealing && stage >= 1;
+  const wrongTheirs = revealing && stage >= 2 && theirs && !correct;
+  const dim =
+    (locked && !mine && !revealing) || (revealing && stage >= 2 && !correct && !mine && !theirsShown) || hidden;
   const face = showCorrect ? colors.gold : mine && !revealing ? colors.paper : colors.raisedHi;
   const ink = showCorrect || (mine && !revealing) ? colors.ink : colors.text;
+  // Who picked this tile is shown by the frame colour (you — vermilion, opponent — cobalt) and a name tag.
+  const frame = mine && revealing ? colors.human : theirsShown ? colors.bot : colors.ink;
+  const both = mine && theirsShown;
 
   return (
     <Animated.View entering={FadeInDown.delay(appearDelay).duration(220)}>
@@ -209,26 +215,33 @@ function Choice({
             depth={4}
             color={face}
             shadow={showCorrect ? colors.goldDeep : mine && !revealing ? colors.paperDeep : colors.bgDeep}
-            border={wrongMine ? colors.human : colors.ink}
+            border={frame}
+            faceStyle={[
+              (mine && revealing) || theirsShown ? { borderWidth: 3 } : null,
+              both ? { borderRightColor: colors.bot, borderBottomColor: colors.bot } : null,
+            ]}
           >
             <View style={styles.choice}>
               <Text style={[styles.letter, { color: ink }]}>{hidden ? "—" : LETTERS[index]}</Text>
               <Text style={[styles.choiceText, { color: ink }, hidden && { textDecorationLine: "line-through" }]}>{text}</Text>
-              <View style={styles.marks}>
-                {revealing && stage >= 2 && correct && <Text style={[styles.mark, { color: colors.ink }]}>✓</Text>}
-                {wrongMine && <Text style={[styles.mark, { color: colors.human }]}>✕</Text>}
+              {revealing && stage >= 2 && correct && <Text style={[styles.mark, { color: colors.ink }]}>✓</Text>}
+              {(wrongMine || (wrongTheirs && !mine)) && <Text style={[styles.mark, { color: colors.text }]}>✕</Text>}
+            </View>
+            {(mine || theirsShown) && (
+              <View style={styles.tags}>
                 {mine && (
-                  <View style={[styles.who, { backgroundColor: colors.human }]}>
-                    <Text style={styles.whoText}>ВЫ</Text>
+                  <View style={[styles.tag, { backgroundColor: colors.human }]}>
+                    <Text style={[styles.tagText, { color: colors.humanInk }]}>ВАШ ОТВЕТ</Text>
                   </View>
                 )}
-                {theirs && revealing && stage >= 1 && (
-                  <Animated.View entering={FadeIn.duration(200)}>
-                    <Avatar id={botId} size={24} ring={colors.bot} uid={`ch-${index}`} />
+                {theirsShown && (
+                  <Animated.View entering={FadeIn.duration(200)} style={[styles.tag, { backgroundColor: colors.bot }]}>
+                    <Avatar id={botId} size={18} uid={`ch-${index}`} />
+                    <Text style={[styles.tagText, { color: colors.botInk }]}>СОПЕРНИК</Text>
                   </Animated.View>
                 )}
               </View>
-            </View>
+            )}
           </Slab>
         )}
       </Pressable>
@@ -310,7 +323,10 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
   const mineIndex = reveal ? reveal.answers.human?.value ?? null : chosen;
 
   const verdict = reveal ? revealTitle(state, reveal) : null;
-  const toneColor = verdict?.tone === "good" ? colors.gold : verdict?.tone === "bad" ? colors.human : colors.text;
+  // The verdict is painted in the winner's colour: vermilion = you, cobalt = opponent.
+  const verdictWinner: PlayerId | null = verdict?.tone === "good" ? "human" : verdict?.tone === "bad" ? "bot" : null;
+  const verdictFace = verdictWinner ? playerColor(verdictWinner) : colors.raisedHi;
+  const verdictInk = verdictWinner === "human" ? colors.humanInk : verdictWinner === "bot" ? colors.botInk : colors.text;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 6 }]}>
@@ -340,9 +356,10 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
               <NumberLine
                 answer={reveal.correctValue}
                 unit={question.unit}
+                winner={reveal.winner}
                 pins={[
-                  { key: "h", value: reveal.answers.human?.value ?? null, color: colors.human, label: "вы" },
-                  { key: "b", value: reveal.answers.bot?.value ?? null, color: colors.bot, label: "соперник" },
+                  { key: "human", value: reveal.answers.human?.value ?? null, color: colors.human, label: "вы" },
+                  { key: "bot", value: reveal.answers.bot?.value ?? null, color: colors.bot, label: "соперник" },
                 ]}
               />
             )}
@@ -428,12 +445,21 @@ export function QuestionStage({ state, q, reveal, questionShownAt, answersAt, on
 
         {reveal && stage >= 3 && verdict && (
           <Animated.View entering={FadeInDown.duration(260).easing(Easing.out(Easing.cubic))} style={styles.verdict}>
-            <Text style={[styles.verdictTitle, { color: toneColor }]}>{verdict.title}</Text>
-            {verdict.subtitle ? <Text style={styles.verdictSub}>{verdict.subtitle}</Text> : null}
+            <Slab color={verdictFace} shadow={verdictWinner ? playerDeep(verdictWinner) : colors.bgDeep} depth={4}>
+              <View style={styles.verdictRow}>
+                {verdictWinner && (
+                  <Avatar id={verdictWinner === "human" ? "you" : state.config.opponent.id} size={44} uid="verdict" />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.verdictTitle, { color: verdictInk }]}>{verdict.title}</Text>
+                  {verdict.subtitle ? <Text style={[styles.verdictSub, { color: verdictInk }]}>{verdict.subtitle}</Text> : null}
+                </View>
+              </View>
+            </Slab>
             {reveal.rewards
               .filter((r) => r.player === "human")
               .map((r, i) => (
-                <Text key={i} style={styles.reward}>
+                <Text key={i} style={[styles.reward, { marginTop: 10 }]}>
                   {r.reason === "streak" ? "Серия верных ответов" : "Аванпост"}: +1 «{BOOSTER_LABELS[r.booster].name}»
                 </Text>
               ))}
@@ -481,10 +507,10 @@ const styles = StyleSheet.create({
   choice: { flexDirection: "row", alignItems: "center", minHeight: 54, paddingHorizontal: 14, paddingVertical: 8, gap: 12 },
   letter: { fontFamily: fonts.display, fontSize: 15, width: 18 },
   choiceText: { fontFamily: fonts.bodySemi, fontSize: 17, lineHeight: 22, flex: 1 },
-  marks: { flexDirection: "row", alignItems: "center", gap: 6 },
+  tags: { flexDirection: "row", gap: 6, paddingHorizontal: 12, paddingBottom: 8, marginTop: -2 },
+  tag: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 3, borderWidth: 1.5, borderColor: colors.ink },
+  tagText: { fontFamily: fonts.display, fontSize: 10, letterSpacing: 0.5 },
   mark: { fontFamily: fonts.display, fontSize: 18 },
-  who: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 3, borderWidth: 1.5, borderColor: colors.ink },
-  whoText: { fontFamily: fonts.display, fontSize: 9, color: colors.humanInk },
   reading: { height: 120, alignItems: "center", justifyContent: "center" },
   readingText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.dim, letterSpacing: 1, textTransform: "uppercase" },
   footer: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44 },
@@ -503,7 +529,8 @@ const styles = StyleSheet.create({
   boosterName: { fontFamily: fonts.displayBold, fontSize: 13, color: colors.gold },
   boosterCount: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.muted },
   verdict: { paddingTop: 4 },
-  verdictTitle: { fontFamily: fonts.display, fontSize: 24, lineHeight: 30 },
-  verdictSub: { fontFamily: fonts.body, fontSize: 15, color: colors.muted, marginTop: 4 },
+  verdictRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12 },
+  verdictTitle: { fontFamily: fonts.display, fontSize: 20, lineHeight: 25 },
+  verdictSub: { fontFamily: fonts.bodySemi, fontSize: 14, lineHeight: 19, marginTop: 2, opacity: 0.9 },
   reward: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.gold, marginTop: 6 },
 });

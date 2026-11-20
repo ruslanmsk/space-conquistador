@@ -200,7 +200,8 @@ function Choice({
   const ink = showCorrect || (mine && !revealing) ? colors.ink : colors.text;
 
   return (
-    <Animated.View entering={FadeInDown.delay(appearDelay).duration(220)} style={shakeStyle}>
+    <Animated.View entering={FadeInDown.delay(appearDelay).duration(220)}>
+      <Animated.View style={shakeStyle}>
       <Pressable accessibilityRole="button" disabled={locked || hidden} onPress={onPress} style={{ opacity: dim ? 0.38 : 1 }}>
         {({ pressed }) => (
           <Slab
@@ -231,6 +232,7 @@ function Choice({
           </Slab>
         )}
       </Pressable>
+      </Animated.View>
     </Animated.View>
   );
 }

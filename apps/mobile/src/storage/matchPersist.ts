@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { MatchState } from "@space-conquistador/game-core";
 
-const KEY = "space-conquistador/match-v2";
+const KEY = "space-conquistador/match-v4";
 
 export async function saveMatchState(state: MatchState | null): Promise<void> {
   if (!state || state.phase === "finished") {
@@ -16,7 +16,7 @@ export async function loadMatchState(): Promise<MatchState | null> {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as MatchState;
-    if (parsed.version !== 2 || parsed.phase === "finished") throw new Error("stale save");
+    if (parsed.version !== 4 || parsed.phase === "finished") throw new Error("stale save");
     return parsed;
   } catch {
     await AsyncStorage.removeItem(KEY);

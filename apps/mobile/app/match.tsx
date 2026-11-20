@@ -1,26 +1,34 @@
-import { getLegalAttackTargets, getLegalPicks } from "@space-conquistador/game-core";
+import { OPPONENTS, getLegalAttackTargets, getLegalPicks } from "@space-conquistador/game-core";
 import { router } from "expo-router";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Avatar } from "../src/components/Avatar";
 import { Hud } from "../src/components/Hud";
-import { QuestionPanel } from "../src/components/QuestionPanel";
+import { PlanetCard } from "../src/components/PlanetCard";
+import { QuestionStage } from "../src/components/QuestionStage";
 import { ResultPanel } from "../src/components/ResultPanel";
-import { RevealPanel } from "../src/components/RevealPanel";
 import { Screen } from "../src/components/Screen";
-import { Sheet } from "../src/components/Sheet";
 import { StarMap } from "../src/components/StarMap";
+import { WagerPanel } from "../src/components/WagerPanel";
 import { stepHint } from "../src/game/labels";
+import { useProgressData } from "../src/hooks/useProgressData";
 import { useMatchStore } from "../src/store/matchStore";
 import { colors } from "../src/theme/colors";
+import { fonts } from "../src/theme/type";
 import { haptics } from "../src/utils/haptics";
+import { sound } from "../src/utils/sound";
 
 export default function MatchScreen() {
   const insets = useSafeAreaInsets();
   const match = useMatchStore((s) => s.match);
-  const questionStartedAt = useMatchStore((s) => s.questionStartedAt);
+  const answersAt = useMatchStore((s) => s.answersAt);
+  const questionShownAt = useMatchStore((s) => s.questionShownAt);
   const questionSerial = useMatchStore((s) => s.questionSerial);
-  const { answer, pick, attack, next, restore, newMatch, abandon } = useMatchStore.getState();
+  const { answer, boost, pick, attack, wager, next, restore, newMatch, abandon } = useMatchStore.getState();
+  const progress = useProgressData();
+  const [inspected, setInspected] = useState<string | null>(null);
 
   useEffect(() => {
     if (!useMatchStore.getState().match) {
@@ -43,31 +51,56 @@ export default function MatchScreen() {
     return selectKind === "pick" ? getLegalPicks(match, "human") : getLegalAttackTargets(match, "human");
   }, [match, selectKind]);
 
+  // Close the inspector whenever the turn moves on.
+  useEffect(() => setInspected(null), [step?.type, match?.round]);
+
+  // Capture sound when ownership changes on the map.
+  const ownersKey = match ? Object.values(match.owners).join(",") : "";
+  const [prevOwners, setPrevOwners] = useState(ownersKey);
+  useEffect(() => {
+    if (prevOwners && ownersKey !== prevOwners) {
+      sound.play("capture", 0.8);
+      haptics.impact();
+    }
+    setPrevOwners(ownersKey);
+  }, [ownersKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!match || !step) {
     return (
       <Screen>
         <View style={styles.center}>
-          <ActivityIndicator color={colors.accent} />
+          <ActivityIndicator color={colors.gold} />
         </View>
       </Screen>
     );
   }
 
-  const onSelect = (id: string) => {
+  const act = (id: string) => {
     haptics.impact();
+    setInspected(null);
     if (selectKind === "pick") pick(id);
     else if (selectKind === "attack") attack(id);
   };
 
+  const onTap = (id: string) => {
+    haptics.tap();
+    // During expansion picks are quick and safe: one tap takes the planet.
+    if (selectKind === "pick" && selectable.includes(id)) {
+      act(id);
+      return;
+    }
+    setInspected((cur) => (cur === id ? null : id));
+  };
+
   const hint = stepHint(match);
-  const battleTarget =
-    match.battle && (step.type === "question" || step.type === "reveal") ? match.battle.target : null;
+  const oppIndex = OPPONENTS.findIndex((o) => o.id === match.config.opponent.id);
+  const nextOpp = OPPONENTS[oppIndex + 1];
 
   return (
     <Screen>
-      <View style={[styles.top, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.top, { paddingTop: insets.top + 6 }]}>
         <Pressable onPress={() => router.replace("/")} hitSlop={12} style={styles.back}>
-          <Text style={styles.backText}>‹ Меню</Text>
+          <Text style={styles.backText}>← Меню</Text>
         </Pressable>
         <Hud state={match} />
       </View>
@@ -76,39 +109,55 @@ export default function MatchScreen() {
         state={match}
         selectable={selectable}
         selectKind={selectKind}
-        onSelect={onSelect}
-        battleTarget={battleTarget}
+        selected={inspected}
+        onTap={onTap}
+        battleTarget={match.battle?.target ?? null}
       />
 
-      <View style={[styles.bottom, { paddingBottom: insets.bottom + 14 }]}>
-        {hint.text ? (
-          <View style={[styles.hint, { borderColor: hint.tone === "bot" ? colors.bot : colors.accent }]}>
+      <View style={[styles.bottom, { paddingBottom: insets.bottom + 12 }]}>
+        {inspected ? (
+          <PlanetCard
+            state={match}
+            planet={inspected}
+            progress={progress}
+            action={selectable.includes(inspected) ? selectKind : null}
+            onAction={() => act(inspected)}
+            onClose={() => setInspected(null)}
+          />
+        ) : hint.text ? (
+          <Animated.View key={hint.text} entering={FadeInDown.duration(200)} style={[styles.hint, hint.tone === "bot" && styles.hintBot]}>
+            {hint.tone === "bot" && <Avatar id={match.config.opponent.id} size={28} ring={colors.bot} uid="hint" />}
             <Text style={styles.hintText}>{hint.text}</Text>
-          </View>
+          </Animated.View>
         ) : null}
       </View>
 
-      {step.type === "question" && (
-        <Sheet key={`q-${questionSerial}`}>
-          <QuestionPanel state={match} q={step.q} startedAt={questionStartedAt} onAnswer={answer} />
-        </Sheet>
-      )}
-      {step.type === "reveal" && (
-        <Sheet key={`r-${questionSerial}`}>
-          <RevealPanel state={match} reveal={step.reveal} onNext={next} />
-        </Sheet>
-      )}
-      {step.type === "finished" && (
-        <View style={styles.resultWrap}>
-          <ResultPanel
+      {(step.type === "question" || step.type === "reveal") && (
+        <Animated.View entering={FadeIn.duration(180)} style={StyleSheet.absoluteFill}>
+          <QuestionStage
+            key={`q-${questionSerial}`}
             state={match}
-            onRematch={() => newMatch(match.config.botLevel)}
-            onMenu={() => {
-              abandon();
-              router.replace("/");
-            }}
+            q={step.type === "question" ? step.q : null}
+            reveal={step.type === "reveal" ? step.reveal : null}
+            questionShownAt={questionShownAt}
+            answersAt={answersAt}
+            onAnswer={answer}
+            onBoost={boost}
+            onNext={next}
           />
-        </View>
+        </Animated.View>
+      )}
+      {step.type === "wager" && <WagerPanel state={match} onWager={wager} />}
+      {step.type === "finished" && (
+        <ResultPanel
+          state={match}
+          onRematch={() => newMatch(match.config.opponent)}
+          onNext={nextOpp ? () => newMatch(nextOpp) : null}
+          onMenu={() => {
+            abandon();
+            router.replace("/");
+          }}
+        />
       )}
     </Screen>
   );
@@ -116,23 +165,21 @@ export default function MatchScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  top: { paddingHorizontal: 14 },
-  back: { alignSelf: "flex-start", paddingVertical: 4, marginBottom: 8 },
-  backText: { color: colors.muted, fontSize: 15, fontWeight: "600" },
-  bottom: { paddingHorizontal: 14, minHeight: 70, justifyContent: "flex-end" },
+  top: { paddingHorizontal: 12 },
+  back: { alignSelf: "flex-start", paddingVertical: 4, marginBottom: 6 },
+  backText: { fontFamily: fonts.bodyBold, color: colors.muted, fontSize: 14 },
+  bottom: { paddingHorizontal: 12, minHeight: 64, justifyContent: "flex-end" },
   hint: {
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.raised,
+    borderWidth: 2,
+    borderColor: colors.human,
+    borderRadius: 6,
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  hintText: { color: colors.text, fontSize: 15, fontWeight: "600", textAlign: "center", lineHeight: 20 },
-  resultWrap: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-  },
+  hintBot: { borderColor: colors.bot },
+  hintText: { flex: 1, fontFamily: fonts.bodySemi, color: colors.text, fontSize: 14, lineHeight: 19 },
 });

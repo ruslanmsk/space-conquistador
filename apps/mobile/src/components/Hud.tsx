@@ -1,84 +1,110 @@
 import { getScores, ownedPlanets, type MatchState, type PlayerId } from "@space-conquistador/game-core";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { phaseLabel } from "../game/labels";
+import { formatNumber, phaseLabel } from "../game/labels";
 import { colors, playerColor } from "../theme/colors";
+import { fonts } from "../theme/type";
+import { Avatar } from "./Avatar";
 
-function activePlayer(state: MatchState): PlayerId | null {
-  const s = state.step;
-  if (s.type === "pick") return s.queue[0] ?? null;
-  if (s.type === "attack") return s.player;
-  return null;
+/** Counts up/down to the new value over ~500 ms. */
+function useCountUp(value: number) {
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  useEffect(() => {
+    const start = Date.now();
+    const a = from.current;
+    let raf = 0;
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - start) / 500);
+      const v = Math.round(a + (value - a) * (1 - (1 - t) * (1 - t)));
+      setShown(v);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else from.current = value;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      from.current = value;
+    };
+  }, [value]);
+  return shown;
 }
 
-function PlayerCard({ state, player, active }: { state: MatchState; player: PlayerId; active: boolean }) {
-  const color = playerColor(player);
-  const score = getScores(state)[player];
+function Plate({ state, player, active }: { state: MatchState; player: PlayerId; active: boolean }) {
+  const score = useCountUp(getScores(state)[player]);
   const planets = ownedPlanets(state, player).length;
-  const shields = state.shields[player];
+  const color = playerColor(player);
+  const name = player === "human" ? "Вы" : state.config.opponent.name;
+  const b = state.boosters[player];
+  const right = player === "bot";
   return (
-    <View style={[styles.card, { borderColor: active ? color : colors.border }, active && { shadowColor: color }]}>
-      <View style={styles.cardTop}>
-        <View style={[styles.dot, { backgroundColor: color }]} />
-        <Text style={styles.name}>{player === "human" ? "Вы" : "Бот"}</Text>
-        <Text style={styles.shields}>{"◆".repeat(shields)}<Text style={styles.shieldsOff}>{"◆".repeat(Math.max(0, state.config.capitalShields - shields))}</Text></Text>
+    <View style={[styles.plate, right && styles.plateRight, active && { borderColor: color }]}>
+      <Avatar id={player === "human" ? "you" : state.config.opponent.id} size={36} ring={color} uid={`hud-${player}`} />
+      <View style={[styles.plateText, right && { alignItems: "flex-end" }]}>
+        <Text style={styles.name} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={[styles.score, { color }]}>{formatNumber(score)}</Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          {planets} пл · бустеры {b.fifty + b.range}
+          {state.streak[player] >= 2 ? ` · серия ${state.streak[player]}` : ""}
+        </Text>
       </View>
-      <Text style={[styles.score, { color }]}>{score}</Text>
-      <Text style={styles.sub}>
-        {planets} {plural(planets, "планета", "планеты", "планет")}
-      </Text>
     </View>
   );
 }
 
-function plural(n: number, one: string, few: string, many: string) {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
 export function Hud({ state }: { state: MatchState }) {
-  const active = activePlayer(state);
+  const step = state.step;
+  const actor =
+    step.type === "pick" ? step.queue[0] : step.type === "attack" ? step.player : null;
+  const phase = phaseLabel(state);
+  const turns = state.config.battleTurns;
   return (
     <View>
       <View style={styles.row}>
-        <PlayerCard state={state} player="human" active={active === "human"} />
-        <PlayerCard state={state} player="bot" active={active === "bot"} />
+        <Plate state={state} player="human" active={actor === "human"} />
+        <Plate state={state} player="bot" active={actor === "bot"} />
       </View>
-      <Text style={styles.phase}>{phaseLabel(state)}</Text>
+      <View style={styles.phase}>
+        <Text style={styles.phaseTitle}>{phase.title}</Text>
+        {state.phase === "battle" ? (
+          <View style={styles.turns}>
+            {Array.from({ length: turns }, (_, i) => (
+              <View key={i} style={[styles.turn, i < state.round - 1 && styles.turnDone, i === state.round - 1 && styles.turnNow]} />
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.phaseDetail}>{phase.detail}</Text>
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", gap: 10 },
-  card: {
+  row: { flexDirection: "row", gap: 8 },
+  plate: {
     flex: 1,
-    backgroundColor: colors.panel,
-    borderWidth: 1.5,
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 0 },
-    shadowColor: "transparent",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.line,
+    backgroundColor: colors.raised,
   },
-  cardTop: { flexDirection: "row", alignItems: "center", gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  name: { color: colors.text, fontSize: 14, fontWeight: "700", flex: 1 },
-  shields: { color: colors.accent, fontSize: 10, letterSpacing: 1 },
-  shieldsOff: { color: colors.dim },
-  score: { fontSize: 26, fontWeight: "800", marginTop: 2, fontVariant: ["tabular-nums"] },
-  sub: { color: colors.muted, fontSize: 12 },
-  phase: {
-    color: colors.muted,
-    textAlign: "center",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    marginTop: 10,
-  },
+  plateRight: { flexDirection: "row-reverse" },
+  plateText: { flex: 1, minWidth: 0 },
+  name: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.muted },
+  score: { fontFamily: fonts.display, fontSize: 20, lineHeight: 24, fontVariant: ["tabular-nums"] },
+  meta: { fontFamily: fonts.body, fontSize: 10, color: colors.dim },
+  phase: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 8 },
+  phaseTitle: { fontFamily: fonts.displayBold, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", color: colors.text },
+  phaseDetail: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.muted, textTransform: "uppercase", letterSpacing: 1 },
+  turns: { flexDirection: "row", gap: 3 },
+  turn: { width: 10, height: 6, borderRadius: 1, borderWidth: 1.5, borderColor: colors.lineHi },
+  turnDone: { backgroundColor: colors.lineHi },
+  turnNow: { backgroundColor: colors.gold, borderColor: colors.gold },
 });

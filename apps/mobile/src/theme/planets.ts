@@ -1,22 +1,70 @@
-type PlanetLook = { light: string; dark: string; r: number; ring?: boolean };
+/**
+ * Poster-style planet looks: a flat base, 2–3 flat detail shapes and a halftone night side.
+ * Colours are muted print inks so the players' vermilion/cobalt rings stay the loudest thing on the map.
+ */
+export type PlanetStyle =
+  | { kind: "banded"; bands: string[]; spot?: string }
+  | { kind: "cratered"; crater: string }
+  | { kind: "earth"; land: string }
+  | { kind: "lined"; line: string }
+  | { kind: "heart"; patch: string };
 
-const LOOKS: Record<string, PlanetLook> = {
-  earth: { light: "#7fd3ff", dark: "#1d5fae", r: 6.5 },
-  moon: { light: "#e4e4ee", dark: "#7c7c92", r: 3.8 },
-  venus: { light: "#ffe2a3", dark: "#c08a3e", r: 4.8 },
-  mars: { light: "#ff9a6b", dark: "#a8321b", r: 4.4 },
-  mercury: { light: "#d6cfc8", dark: "#6e655d", r: 3.8 },
-  vesta: { light: "#c9bfb2", dark: "#6a6058", r: 3.4 },
-  ceres: { light: "#c8c2dc", dark: "#5f5a78", r: 4.6 },
-  jupiter: { light: "#f5cf9a", dark: "#a8693a", r: 6 },
-  saturn: { light: "#fbe4a6", dark: "#b98c45", r: 5, ring: true },
-  europa: { light: "#f4ead8", dark: "#a08f72", r: 3.8 },
-  uranus: { light: "#b8fbf6", dark: "#3aa5b4", r: 5 },
-  triton: { light: "#e0ecfa", dark: "#7f93ad", r: 3.6 },
-  neptune: { light: "#8fa8ff", dark: "#2639b8", r: 6.5 },
+export type PlanetLook = {
+  base: string;
+  shade: string;
+  r: number;
+  ring?: string;
+  style: PlanetStyle;
 };
 
-const FALLBACK: PlanetLook = { light: "#c8c8e0", dark: "#555570", r: 4.5 };
+const LOOKS: Record<string, PlanetLook> = {
+  earth: { base: "#3F8E8C", shade: "#1F4D55", r: 7, style: { kind: "earth", land: "#E3D3A2" } },
+  neptune: {
+    base: "#4F6BC0",
+    shade: "#243670",
+    r: 7,
+    style: { kind: "banded", bands: ["#6E8BDA", "#3B55A3"] },
+  },
+  moon: { base: "#CFC6B4", shade: "#6F695E", r: 3.8, style: { kind: "cratered", crater: "#A99F8C" } },
+  triton: { base: "#C3CFD6", shade: "#66737D", r: 3.8, style: { kind: "cratered", crater: "#9FAEB8" } },
+  ceres: { base: "#8E877B", shade: "#4A453D", r: 4.4, style: { kind: "cratered", crater: "#6F685D" } },
+  venus: {
+    base: "#E5B46E",
+    shade: "#8E5F2A",
+    r: 4.8,
+    style: { kind: "banded", bands: ["#F2CF93", "#C99248"] },
+  },
+  uranus: {
+    base: "#8CC7C0",
+    shade: "#3F7A78",
+    r: 4.8,
+    style: { kind: "banded", bands: ["#A9DDD6"] },
+  },
+  mars: { base: "#B4643F", shade: "#5E2C1A", r: 4.3, style: { kind: "cratered", crater: "#8E4A2D" } },
+  europa: { base: "#E8DCC2", shade: "#8A7A5B", r: 4.3, style: { kind: "lined", line: "#B07A4F" } },
+  mercury: { base: "#9D928A", shade: "#4E4741", r: 4.3, style: { kind: "cratered", crater: "#7C726A" } },
+  pluto: { base: "#CDB39C", shade: "#6B5644", r: 4.3, style: { kind: "heart", patch: "#F1E6D0" } },
+  saturn: {
+    base: "#DDBE86",
+    shade: "#7E6337",
+    r: 6,
+    ring: "#EBD7A8",
+    style: { kind: "banded", bands: ["#EAD2A0", "#C49F5F"] },
+  },
+  jupiter: {
+    base: "#D39A66",
+    shade: "#7A4B28",
+    r: 6.2,
+    style: { kind: "banded", bands: ["#EDCB9C", "#B26F42", "#EDCB9C"], spot: "#B4482C" },
+  },
+};
+
+const FALLBACK: PlanetLook = {
+  base: "#A9A9B8",
+  shade: "#55556A",
+  r: 4.5,
+  style: { kind: "cratered", crater: "#8A8A9C" },
+};
 
 export function planetLook(id: string): PlanetLook {
   return LOOKS[id] ?? FALLBACK;

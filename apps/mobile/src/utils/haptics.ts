@@ -1,18 +1,32 @@
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
-
-const enabled = Platform.OS !== "web";
+import { prefs } from "./prefs";
 
 function safe(p: () => Promise<void>) {
-  if (!enabled) return;
+  if (Platform.OS === "web" || !prefs.haptics) return;
   p().catch(() => {});
 }
 
+const android = Platform.OS === "android";
+const AT = Haptics.AndroidHaptics;
+
+/** Short and crisp; strength follows the importance of the event. */
 export const haptics = {
-  tap: () => safe(() => Haptics.selectionAsync()),
+  tap: () => safe(() => (android ? Haptics.performAndroidHapticsAsync(AT.Segment_Tick) : Haptics.selectionAsync())),
+  tick: () => safe(() => (android ? Haptics.performAndroidHapticsAsync(AT.Clock_Tick) : Haptics.selectionAsync())),
   impact: () => safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)),
   heavy: () => safe(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)),
-  success: () => safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
-  error: () => safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)),
+  success: () =>
+    safe(() =>
+      android
+        ? Haptics.performAndroidHapticsAsync(AT.Confirm)
+        : Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
+    ),
+  error: () =>
+    safe(() =>
+      android
+        ? Haptics.performAndroidHapticsAsync(AT.Reject)
+        : Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error),
+    ),
   warning: () => safe(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)),
 };

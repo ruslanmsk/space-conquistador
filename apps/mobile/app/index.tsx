@@ -1,128 +1,133 @@
-import type { BotLevel } from "@space-conquistador/game-core";
+import { OPPONENTS } from "@space-conquistador/game-core";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Avatar } from "../src/components/Avatar";
 import { Button } from "../src/components/Button";
-import { Logo } from "../src/components/Logo";
+import { Poster } from "../src/components/Poster";
 import { Screen } from "../src/components/Screen";
+import { Slab } from "../src/components/Slab";
 import { LEVEL_LABELS } from "../src/game/labels";
+import { useProgressData } from "../src/hooks/useProgressData";
 import { loadMatchState } from "../src/storage/matchPersist";
-import { hasSeenRules, loadLevel, loadStats, saveLevel, type Stats } from "../src/storage/settings";
+import { isUnlocked, nextOpponentIndex } from "../src/storage/progress";
 import { useMatchStore } from "../src/store/matchStore";
 import { colors } from "../src/theme/colors";
+import { fonts } from "../src/theme/type";
 import { haptics } from "../src/utils/haptics";
 
-const LEVELS: BotLevel[] = ["easy", "normal", "hard"];
+function Stars({ n }: { n: number }) {
+  return (
+    <Text style={styles.stars}>
+      <Text style={{ color: colors.gold }}>{"★".repeat(n)}</Text>
+      <Text style={{ color: colors.line }}>{"★".repeat(3 - n)}</Text>
+    </Text>
+  );
+}
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const [level, setLevel] = useState<BotLevel>("normal");
-  const [stats, setStats] = useState<Stats | null>(null);
+  const { width } = useWindowDimensions();
+  const progress = useProgressData();
   const [canContinue, setCanContinue] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      void loadLevel().then(setLevel);
-      void loadStats().then(setStats);
       const live = useMatchStore.getState().match;
       if (live && live.phase !== "finished") setCanContinue(true);
       else void loadMatchState().then((s) => setCanContinue(!!s));
     }, []),
   );
 
-  const start = async () => {
-    if (await hasSeenRules()) {
-      useMatchStore.getState().newMatch(level);
-      router.push("/match");
-    } else {
-      router.push({ pathname: "/rules", params: { then: "match" } });
-    }
-  };
-
-  const chooseLevel = (l: BotLevel) => {
-    haptics.tap();
-    setLevel(l);
-    void saveLevel(l);
-  };
+  const nextIdx = progress ? nextOpponentIndex(progress) : 0;
+  const next = OPPONENTS[nextIdx]!;
+  const posterW = Math.min(width, 520);
 
   return (
     <Screen>
-      <View style={[styles.root, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
-        <View style={styles.hero}>
-          <Logo size={190} />
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }}>
+        <Poster width={posterW} height={posterW * 0.62} />
+        <View style={styles.pad}>
           <Text style={styles.title}>SPACE{"\n"}CONQUISTADOR</Text>
-          <Text style={styles.subtitle}>Захвати Солнечную систему знаниями</Text>
-        </View>
+          <Text style={styles.tagline}>Квиз-завоевание Солнечной системы. Отвечайте быстрее — забирайте планеты.</Text>
 
-        <View style={styles.actions}>
-          {canContinue && <Button title="Продолжить матч" onPress={() => router.push("/match")} />}
-          <Button
-            title={canContinue ? "Новый матч" : "Играть"}
-            variant={canContinue ? "secondary" : "primary"}
-            onPress={() => void start()}
-          />
-
-          <Text style={styles.label}>Сложность бота</Text>
-          <View style={styles.segment}>
-            {LEVELS.map((l) => (
-              <Pressable
-                key={l}
-                onPress={() => chooseLevel(l)}
-                style={[styles.segItem, level === l && styles.segActive]}
-              >
-                <Text style={[styles.segText, level === l && styles.segTextActive]}>{LEVEL_LABELS[l]}</Text>
-              </Pressable>
-            ))}
+          <View style={styles.actions}>
+            {canContinue && (
+              <Button title="Продолжить матч" onPress={() => router.push("/match")} />
+            )}
+            <Button
+              variant={canContinue ? "secondary" : "primary"}
+              title={`В бой: ${next.name}`}
+              caption={`${LEVEL_LABELS[next.level]} соперник · миссия ${nextIdx + 1} из ${OPPONENTS.length}`}
+              icon={<Avatar id={next.id} size={40} uid="cta" />}
+              onPress={() => router.push({ pathname: "/briefing", params: { id: next.id } })}
+            />
           </View>
 
-          <Button title="Как играть" variant="ghost" onPress={() => router.push("/rules")} />
-          {stats && stats.wins + stats.losses + stats.draws > 0 && (
-            <Text style={styles.stats}>
-              Побед: {stats.wins} · Поражений: {stats.losses}
-              {stats.draws ? ` · Ничьих: ${stats.draws}` : ""}
-            </Text>
-          )}
+          <Text style={styles.section}>Кампания</Text>
+          <View style={{ gap: 10 }}>
+            {OPPONENTS.map((o, i) => {
+              const open = progress ? isUnlocked(progress, i) : i === 0;
+              const stars = progress?.stars[o.id] ?? 0;
+              return (
+                <Animated.View key={o.id} entering={FadeInDown.delay(60 * i).duration(250)}>
+                  <Pressable
+                    disabled={!open}
+                    onPress={() => {
+                      haptics.tap();
+                      router.push({ pathname: "/briefing", params: { id: o.id } });
+                    }}
+                  >
+                    {({ pressed }) => (
+                      <Slab pressed={pressed} depth={4} color={open ? colors.raised : colors.sunken} border={i === nextIdx ? colors.gold : colors.ink}>
+                        <View style={[styles.opp, !open && { opacity: 0.5 }]}>
+                          <Text style={styles.oppNum}>{String(i + 1).padStart(2, "0")}</Text>
+                          <Avatar id={o.id} size={44} uid={`list-${o.id}`} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.oppName}>{o.name}</Text>
+                            <Text style={styles.oppMeta}>{open ? `${LEVEL_LABELS[o.level]} · сильна в: ${o.strong.slice(0, 2).join(", ")}` : "Победите предыдущего соперника"}</Text>
+                          </View>
+                          {open ? <Stars n={stars} /> : <Text style={styles.lock}>⌧</Text>}
+                        </View>
+                      </Slab>
+                    )}
+                  </Pressable>
+                </Animated.View>
+              );
+            })}
+          </View>
+
+          <View style={styles.links}>
+            <Button title="Как играть" variant="ghost" onPress={() => router.push("/rules")} />
+            <Button title="Статистика" variant="ghost" onPress={() => router.push("/stats")} />
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: 24, justifyContent: "space-between" },
-  hero: { alignItems: "center", marginTop: 8 },
-  title: {
-    color: colors.text,
-    fontSize: 34,
-    fontWeight: "900",
-    letterSpacing: 3,
-    textAlign: "center",
-    lineHeight: 38,
-    marginTop: 8,
-  },
-  subtitle: { color: colors.muted, fontSize: 16, marginTop: 10, textAlign: "center" },
-  actions: { gap: 12 },
-  label: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1.2,
+  pad: { paddingHorizontal: 20 },
+  title: { fontFamily: fonts.display, fontSize: 32, lineHeight: 36, color: colors.text, letterSpacing: -0.5, marginTop: 4 },
+  tagline: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21, color: colors.muted, marginTop: 8 },
+  actions: { gap: 12, marginTop: 20 },
+  section: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 11,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
-    textAlign: "center",
-    marginTop: 8,
+    color: colors.muted,
+    marginTop: 28,
+    marginBottom: 10,
   },
-  segment: {
-    flexDirection: "row",
-    backgroundColor: colors.panel,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 4,
-  },
-  segItem: { flex: 1, paddingVertical: 11, borderRadius: 10, alignItems: "center" },
-  segActive: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.accent },
-  segText: { color: colors.muted, fontSize: 15, fontWeight: "700" },
-  segTextActive: { color: colors.text },
-  stats: { color: colors.dim, fontSize: 13, textAlign: "center" },
+  opp: { flexDirection: "row", alignItems: "center", gap: 12, padding: 10 },
+  oppNum: { fontFamily: fonts.display, fontSize: 12, color: colors.dim, width: 26 },
+  oppName: { fontFamily: fonts.displayBold, fontSize: 15, color: colors.text },
+  oppMeta: { fontFamily: fonts.body, fontSize: 12, color: colors.muted, marginTop: 2 },
+  stars: { fontSize: 16, letterSpacing: 1 },
+  lock: { fontSize: 18, color: colors.dim },
+  links: { flexDirection: "row", justifyContent: "center", gap: 24, marginTop: 18 },
 });

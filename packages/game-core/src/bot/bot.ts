@@ -20,9 +20,9 @@ const LEVELS: Record<
   BotLevel,
   { accuracy: number; spread: number; yearSpread: number; minMs: number; maxMs: number; boostChance: number }
 > = {
-  easy: { accuracy: 0.5, spread: 0.35, yearSpread: 40, minMs: 5_000, maxMs: 11_000, boostChance: 0.15 },
-  normal: { accuracy: 0.66, spread: 0.18, yearSpread: 18, minMs: 3_500, maxMs: 9_000, boostChance: 0.3 },
-  hard: { accuracy: 0.82, spread: 0.08, yearSpread: 6, minMs: 2_500, maxMs: 6_500, boostChance: 0.45 },
+  easy: { accuracy: 0.5, spread: 0.35, yearSpread: 22, minMs: 5_000, maxMs: 11_000, boostChance: 0.15 },
+  normal: { accuracy: 0.66, spread: 0.18, yearSpread: 11, minMs: 3_500, maxMs: 9_000, boostChance: 0.3 },
+  hard: { accuracy: 0.82, spread: 0.08, yearSpread: 5, minMs: 2_500, maxMs: 6_500, boostChance: 0.45 },
 };
 
 const STRONG_BONUS = 0.15;
@@ -75,6 +75,7 @@ export function botAnswer(
     ? target + gaussian(rng) * cfg.yearSpread * hardness
     : target * (1 + gaussian(rng) * cfg.spread * hardness);
   if (target >= 0) value = Math.max(0, value);
+  if (isYear) value = Math.min(value, 2025);
   if (aid?.range) value = Math.min(aid.range[1], Math.max(aid.range[0], value));
   value = Number.isInteger(target) ? Math.round(value) : Math.round(value * 10) / 10;
   return { value, elapsedMs };

@@ -1,32 +1,70 @@
 import { Platform } from "react-native";
 
+/**
+ * "Космоплакат": a 1960s print-poster look. Deep ink map, cream paper cards, vermilion (you)
+ * vs cobalt (opponent) — distinguishable for colour-blind players, and always paired with a
+ * second cue (pattern or glyph). Gold means "correct". No glass, no gradients in UI chrome.
+ */
 export const colors = {
-  bg: "#05060f",
-  bgTop: "#0b1030",
-  panel: "rgba(14, 18, 42, 0.96)",
-  panelSolid: "#0e122a",
-  card: "#151a3a",
-  cardPressed: "#1d2450",
-  border: "#262d5c",
-  text: "#eef0ff",
-  muted: "#8c93c4",
-  dim: "#555c8c",
-  human: "#3fb2ff",
-  humanDeep: "#14507e",
-  bot: "#ff4f6d",
-  botDeep: "#7a1a2c",
-  neutral: "#4a5182",
-  accent: "#ffcc4d",
-  success: "#3ddc97",
-  danger: "#ff4f6d",
-  overlay: "rgba(3, 4, 12, 0.72)",
+  bg: "#121829",
+  bgDeep: "#0B1020",
+  raised: "#1A2238",
+  raisedHi: "#222C47",
+  sunken: "#0E1424",
+  line: "#2A3554",
+  lineHi: "#3E4B73",
+  text: "#F1E6D0",
+  muted: "#A9A9B8",
+  dim: "#6A7192",
+  // cream "paper" for the question card, with ink text on it
+  paper: "#F1E6D0",
+  paperDeep: "#D9C9A8",
+  paperLine: "#CDBB98",
+  ink: "#151B2E",
+  inkMuted: "#5B5A66",
+  human: "#E8552D",
+  humanDeep: "#8E2C12",
+  humanInk: "#FFF3E8",
+  humanSoft: "rgba(232, 85, 45, 0.16)",
+  bot: "#3D8FD9",
+  botDeep: "#1B4D80",
+  botInk: "#F0F7FF",
+  botSoft: "rgba(61, 143, 217, 0.16)",
+  neutral: "#56618A",
+  gold: "#F4B63F",
+  goldDeep: "#A8741A",
+  correct: "#F4B63F",
+  correctDeep: "#A8741A",
+  wrong: "#E8552D",
+  star: "#FFE6A8",
+  overlay: "rgba(8, 11, 22, 0.82)",
+  // legacy aliases used by older components
+  panel: "#1A2238",
+  panelSolid: "#1A2238",
+  card: "#222C47",
+  cardPressed: "#2A3555",
+  border: "#2A3554",
+  accent: "#F4B63F",
+  success: "#F4B63F",
+  danger: "#E8552D",
 };
 
-export const playerColor = (p: "human" | "bot" | null | undefined) =>
+export type PlayerKey = "human" | "bot";
+
+export const playerColor = (p: PlayerKey | null | undefined) =>
   p === "human" ? colors.human : p === "bot" ? colors.bot : colors.neutral;
 
-/** Font family for SVG text: RN-web otherwise falls back to a serif font inside <svg>. */
+export const playerDeep = (p: PlayerKey | null | undefined) =>
+  p === "human" ? colors.humanDeep : p === "bot" ? colors.botDeep : colors.line;
+
+export const playerInk = (p: PlayerKey | null | undefined) =>
+  p === "human" ? colors.humanInk : p === "bot" ? colors.botInk : colors.text;
+
+export const playerSoft = (p: PlayerKey | null | undefined) =>
+  p === "human" ? colors.humanSoft : p === "bot" ? colors.botSoft : "transparent";
+
+/** Font family for SVG text on web (RN-web otherwise falls back to a serif font inside <svg>). */
 export const svgFont = Platform.select({
-  web: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-  default: undefined,
+  web: "Onest_700Bold, system-ui, sans-serif",
+  default: "Onest_700Bold",
 });

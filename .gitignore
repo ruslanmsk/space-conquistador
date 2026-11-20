@@ -11,4 +11,5 @@ dist
 web-build
 .DS_Store
 .env
-.env.*scripts/.cache
+.env.*
+scripts/.cache

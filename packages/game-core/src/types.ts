@@ -41,6 +41,8 @@ export type QuestionRecord = {
   unit?: string;
   /** Short tidbit shown after the answer. */
   fact?: string;
+  /** Where the question came from: absent = hand-written core, else "wikidata" / "quiz-sites" / "chgk". */
+  source?: string;
 };
 
 /** What UI may see during an active question: no answer fields, choices already shuffled. */

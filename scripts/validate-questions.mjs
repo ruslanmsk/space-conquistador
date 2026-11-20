@@ -1,10 +1,18 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const path = join(root, "content/questions/ru.json");
-const data = JSON.parse(readFileSync(path, "utf8"));
+// Every *.json in content/questions is part of the bank (ru.json = hand-written core,
+// wikidata.ru.json = generated, quiz-sites.ru.json / chgk.ru.json = adapted from other quizzes).
+// Ids and texts must be unique across all files.
+const dir = join(root, "content/questions");
+const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+const data = files.flatMap((f) => {
+  const list = JSON.parse(readFileSync(join(dir, f), "utf8"));
+  console.log(`${f}: ${list.length}`);
+  return list;
+});
 
 const CATEGORIES = [
   "История",

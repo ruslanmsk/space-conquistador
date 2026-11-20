@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Space Conquistador",
+    "slug": "space-conquistador",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "scheme": "spaceconquistador",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.spaceconquistador.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a1a"
+      },
+      "package": "com.spaceconquistador.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "backgroundColor": "#0a0a1a"
+    },
+    "plugins": ["expo-router"]
+  }
+}

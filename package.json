@@ -1,0 +1,25 @@
+{
+  "name": "space-conquistador",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "npm run dev --workspace=@space-conquistador/mobile",
+    "web": "npm run web --workspace=@space-conquistador/mobile",
+    "android": "npm run android --workspace=@space-conquistador/mobile",
+    "ios": "npm run ios --workspace=@space-conquistador/mobile",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "check": "npm run validate:questions && npm run typecheck --workspace=@space-conquistador/game-core && npm run typecheck --workspace=@space-conquistador/mobile && npm run test --workspace=@space-conquistador/game-core",
+    "validate:questions": "node scripts/validate-questions.mjs"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "~6.0.3"
+  }
+}

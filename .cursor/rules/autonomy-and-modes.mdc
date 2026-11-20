@@ -1,0 +1,28 @@
+---
+description: Автономная работа, Plan/Debug, разрешения пользователя
+alwaysApply: true
+---
+
+# Автономность и режимы (2026-11-18)
+
+Пользователь разрешил: запускать нужные команды, переключать режимы Plan/Agent, отлаживать — **без лишних вопросов**.
+
+## Режимы
+
+| Режим | Когда |
+|-------|--------|
+| **Agent** | По умолчанию: код, npm, expo, правки, лог |
+| **Plan** | Крупная фича, онлайн/API, рефактор ядра — сначала план, потом Agent |
+| **Debug** | Сбой сборки, рантайм, «не воспроизводится» — ищем evidence, потом фикс |
+
+Сам переключайся через SwitchMode (plan ↔ agent); Debug — когда нужна системная отладка.
+
+## Команды
+
+- Сам: `npm install`, `npx expo start`, typecheck, тесты.
+- Node: если нет в PATH — Cursor helper: `/Applications/Cursor.app/Contents/Resources/app/resources/helpers/node` или установка LTS через `brew install node` **только** если brew есть и node отсутствует.
+- Не: force push, wipe disk, curl|bash с непроверенных URL, коммиты без запроса.
+
+## Модели
+
+Сложный узкий вопрос → Opus 5.5 high reasoning. Остальное → Composer. См. `models.mdc`.

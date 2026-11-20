@@ -1,0 +1,13 @@
+---
+description: Выбор модели — Opus vs Composer (по запросу пользователя)
+alwaysApply: true
+---
+
+# Модели (жёстко)
+
+- **Сложный узкий вопрос** (архитектура, game-core, нетривиальный баг, дизайн API): **Opus 5.5**, режим **high reasoning**. Не использовать fast/low reasoning для этой категории.
+- **Всё остальное** (скaffold, UI, правки, лог, json, продолжение по PROJECT_LOG): **Composer** (Fast).
+
+После ответа Opus по дизайну — реализацию продолжать на Composer.
+
+Детали: `docs/CURSOR_MODELS.md`.
